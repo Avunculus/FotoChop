@@ -193,7 +193,6 @@ class GrabCutter:
         cv.destroyAllWindows()
 
 if __name__ == '__main__':
-    print(__doc__)
     sources = read_sources()
     img, name = ImagePicker(sources).run()
     if img is not None: GrabCutter(img, name).run()
