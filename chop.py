@@ -30,9 +30,9 @@ def scaledown_fit(img: np.ndarray, limit: int|tuple[int,int]) -> tuple[np.ndarra
 def read_sources() -> dict[str,np.ndarray]:
     # create thumbnails, namelist for available files (-> ImagePicker)
     thumbs = [n.removesuffix('.jpg') for n in os.listdir('src/thumbnails/')]
-    fnames = [n for n in os.listdir('src/') if '.' in n]
+    fnames = os.listdir('src/')
     for fn in fnames:               # 'xyz.jpg'
-        name = fn[: fn.index('.')]
+        name = fn[: fn.split('.')[0]]
         if name not in thumbs:      # make thumbnail
             img = cv.imread('src/' + fn)
             thumb, _ = scaledown_fit(img, (64, 64)) # cv.resize(img, (64, 64))
