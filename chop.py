@@ -2,18 +2,17 @@ import numpy as np
 import cv2 as cv
 import os
 
-W, H = (1280, 720)
-GC_MAX_PIXELS = 2000 * 1000  # pixel cap for scaling images sent to cv.grabcut()
-BLUE = [255,0,0]
-BLACK = [0,0,0]
-WHITE = [255,255,255]
-
+W, H    = (1280, 720)
+MAX_PXL = 2000 * 1000  # pixel cap for scaling image sent to cv.grabcut()
+BLUE    = [255,0,0]
+BLACK   = [0,0,0]
+WHITE   = [255,255,255]
 BRUSHES = {0: {'view': BLACK, 'mask': cv.GC_BGD},       # background
            1: {'view': WHITE, 'mask': cv.GC_FGD}}       # foreground
 # 2 == cv.GC_PR_BGD; 3 == cv.GC_PR_FGD
 
 def scaledown_fit(img: np.ndarray, limit: int|tuple[int,int]) -> tuple[np.ndarray,int]:
-    # integer scale image down to fit shape: (w, h) or size: pixels. Keeps aspect ratio.
+    """Integer scale image down to fit shape: (w, h) or size: pixels. Keeps aspect ratio."""
     assert isinstance(limit, tuple) or isinstance(limit, int), f'bad limit dtype: {limit}'
     h, w = img.shape[:2]
     scale = 1
@@ -24,13 +23,6 @@ def scaledown_fit(img: np.ndarray, limit: int|tuple[int,int]) -> tuple[np.ndarra
     img = cv.resize(img, shape)
     print(f'image scaled: {scale=}')
     return (img, scale)
-    # OLD:
-    # if   isinstance(limit, int)  : too_big = lambda w, h, k: (w * h) // (k * k) > limit
-    # elif isinstance(limit, tuple): too_big = lambda w, h, k: w / k > limit[0] or h / k > limit[1]
-    # else: return
-    # while too_big(width, height, scale):
-    #     scale += 1
-    # shape = (width // scale, height // scale)
     
 def read_sources() -> dict[str,np.ndarray]:
     """Returns {filename: thumbnail image} for all images in 'source images/' """
@@ -49,6 +41,16 @@ def read_sources() -> dict[str,np.ndarray]:
         sources[fn] = cv.imread('source images/thumbnails/' + name + '.jpg')
     return sources
 
+def apply_gc_mask(gc_mask: np.ndarray, source: np.ndarray) -> tuple[np.ndarray,np.ndarray]:
+    """Removes pixels marked BG/PR_BG in the gc_mask from source. Will scale gc_mask up to source.
+    Returns the new image (unscaled) and b&w bitmask (scaled to image) as tuple: (image, bitmask)"""
+    mask = np.where((gc_mask==2)|(gc_mask==0), 0, 1).astype('uint8')
+    # scale up, apply to source 
+    h, w = source.shape[:2]
+    mask = cv.resize(mask, (w, h))
+    image = source * mask[:, :, np.newaxis] 
+    mask *= 255     # mask -> b&w
+    return (image, mask)
 
 class ImagePicker:
     def __init__(self, sources:dict[str,np.ndarray]):
@@ -98,77 +100,66 @@ class ImagePicker:
 
 
 class GrabCutter:
-    def __init__(self, image:np.ndarray, job_name:str):
-        print(f'SOURCE:\n{job_name=}\n{image.shape=}')
-        # image coming in as 3-channel BGR
-        self.name = job_name
-        # select ROI (region of interest)
-        source, scale = scaledown_fit(image, (W, H))
+    def __init__(self, image: np.ndarray, job_name: str):
+        print(f'SOURCE:\n{job_name=}\n{image.shape=}') # image coming in as 3-channel BGR
+        # scale full image for viewing 
+        view_img, view_scale = scaledown_fit(image, (W, H))
+        # get ROI from full image
         roi = (0, 0, 0, 0)      # (x, y, width, height)
         while any([i == 0 for i in roi[2:]]):
-            roi = cv.selectROI('select ROI, then press spacebar', source)
+            roi = cv.selectROI('select ROI, then press spacebar', view_img)
         cv.destroyWindow('select ROI, then press spacebar')
-        x, y, w, h = [r * scale for r in roi]   # scale back up to index ROI
+        # scale image, rect for first cut
+        gc_img, gc_scale = scaledown_fit(image, MAX_PXL)
+        x, y, w, h = [(n * view_scale) // gc_scale for n in roi]
         roi = (x, y, w, h)
-        # source, result, views
-        self.source = image[y: y + h, x: x + w] # source = ROI; outside roi forgotten
-        print(f'ROI selected: {self.source.shape=}')
+        # FIRST CUT: keep bgm & fgm; crop/rescale source & mask
+        gc_mask = np.zeros(gc_img.shape[:2])
+        bgm = np.zeros((1, 65), np.float64)    # background model: init from full img on first cut
+        fgm = np.zeros((1, 65), np.float64)    # foreground model: init from full img on first cut
+        gc_mask, bgm, fgm = cv.grabCut(gc_img, gc_mask, roi, bgm, fgm, 1, cv.GC_INIT_WITH_RECT)
+        # generate resulting image
+        result, bitmask = apply_gc_mask(gc_mask, image)
+        # crop gc_mask 
+        gc_mask = gc_mask[y: y + h, x: x + w]
+        x, y, w, h = [n * gc_scale for n in roi] # scale up to full
+        # crop source -> set job attributes
+        self.name = job_name
+        self.source = image[y: y + h, x: x + w]; print(f'ROI selected: {self.source.shape=}')
         self.source_view, self.view_scale = scaledown_fit(self.source.copy(), (W, H))
-        print(f'{self.source_view.shape=}')
-        self.source_view_clean = self.source_view.copy()
-        self.result = np.zeros_like(self.source)
-        self.result_view = self.source_view.copy()
-        # cv.grabcut() args
-        self.gc_source, self.gc_scale = scaledown_fit(self.source, GC_MAX_PIXELS)
-        self.gc_mask = np.ones(self.gc_source.shape[:2], dtype= np.uint8) * cv.GC_PR_FGD    # all px presumed probable FG
-        # self.bgm = np.zeros((1, 65), np.float64)    # background model
-        # self.fgm = np.zeros((1, 65), np.float64)    # foreground model
-        self.cut_count = 0
-        # draws and undos
-        self.drawing  = -1       # 0 = drawing bg, 1 = drawing fg
-        self.draw_rad =  3       # brush radius
-        self.mask_pre_cut  = self.gc_mask.copy()
-        # self.pre_cut  = (self.gc_mask.copy(), self.bgm.copy(), self.fgm.copy())    # for undoing cuts
+        self.source_view_clean = self.source_view.copy()   # not drawn to
+        self.gc_source, self.gc_scale = scaledown_fit(self.source.copy(), MAX_PXL)
+        self.gc_mask = cv.resize(gc_mask, (self.gc_source.shape[1], self.gc_source.shape[0]))
+        self.bgm = bgm
+        self.fgm = fgm
+        self.result = result[y: y + h, x: x + w]
+        self.result_view = cv.resize(self.result.copy(), (self.source_view.shape[1], self.source_view.shape[0]))
+        self.cut_count =  0
+        self.drawing   = -1       # 0 = drawing bg, 1 = drawing fg
+        self.draw_rad  =  3       # brush radius
+        self.mask_pre_cut  = self.gc_mask.copy()    # for undoing cuts
         self.mask_post_cut = self.gc_mask.copy()    # for clearing draws
 
     def _update_result(self):
-        # updates result img & view: convert gc_mask to 0|1
-        mask = np.where((self.gc_mask==2)|(self.gc_mask==0), 0, 1).astype('uint8')
-        # scale up, apply to source -> set self.result= -> scale down to viewsize
-        h, w = self.source.shape[:2]
-        mask = cv.resize(mask, (w, h))
-        self.result = self.source * mask[:, :, np.newaxis]
-        self.result_view = cv.resize(self.result, (w // self.view_scale, h // self.view_scale))
-        # save b/w mask
-        mask *= 255
-        h, w = self.gc_mask.shape[:2]
-        cv.imwrite(f'chopped/{self.name}_MASK_.jpg', mask)
-        # reset view for new draws
+        self.result, mask = apply_gc_mask(self.gc_mask, self.source)
+        h, w = self.result_view.shape[:2]
+        self.result_view = cv.resize(self.result.copy(), (w, h))
         self.source_view = self.source_view_clean.copy()
+        cv.imwrite(f'chopped/{self.name}_MASK_.jpg', mask)
 
     def _cut(self):
         print('cutting...')
-        bgm = np.zeros((1, 65), np.float64)    # background model
-        fgm = np.zeros((1, 65), np.float64)    # foreground model
         self.mask_pre_cut = self.gc_mask.copy()
-        # self.pre_cut = (self.gc_mask.copy(), self.bgm.copy(), self.fgm.copy()) 
-        # ! weird... crashes when trying to do first cut with no draw or fg only draws...
-        # -> !! marking bg required: can't init if all probable fg: nothing to model
-        # --> !!! so we do need to init with rect...
-        # ---> do first 'rough cut' from ROI crop (low gc_res) to build fg/bg models, THEN SCALE UP
-        self.gc_mask, _, _ = \
-            cv.grabCut(self.gc_source, self.gc_mask, None, bgm, fgm, 1, cv.GC_INIT_WITH_MASK)
+        self.gc_mask, self.bgm, self.fgm = \
+            cv.grabCut(self.gc_source, self.gc_mask, None, self.bgm, self.fgm, 1, cv.GC_INIT_WITH_MASK)
         self.mask_post_cut = self.gc_mask.copy()
         self.cut_count += 1
         print(f'cut # {self.cut_count} complete')
         self._update_result()
 
     def _undo_cut(self):
-        if self.cut_count < 1:
-            return
-        print('undoing cut')
+        if self.cut_count < 1: return
         self.gc_mask = self.mask_pre_cut.copy()
-        # self.gc_mask, self.bgm, self.fgm = [m.copy() for m in self.pre_cut]
         self.cut_count -= 1
         self._update_result()
 
@@ -192,12 +183,10 @@ class GrabCutter:
             self.drawing = -1
 
     def _save(self):
-        h, w = self.gc_mask.shape[:2]
-        path = f'chopped/{self.name}_CHOPPED_({self.cut_count} cuts at {w}x{h}).png'
-        # convert to 4-channel
-        result = cv.cvtColor(self.result, cv.COLOR_BGR2BGRA)
+        path = f'chopped/{self.name}_CHOPPED_({self.cut_count} cuts).png'
+        result = cv.cvtColor(self.result, cv.COLOR_BGR2BGRA) # convert to 4-channel
         print(f'saving result: {result.shape=}')
-        cv.imwrite(path, self.result)
+        cv.imwrite(path, result)
 
     def run(self) -> bool:
         cv.namedWindow('RESULT')
@@ -206,25 +195,21 @@ class GrabCutter:
         cv.moveWindow('SOURCE', 0, 0) 
         cv.setMouseCallback('SOURCE', self._handle_mouse) 
         running = True
-        print(f'{self.source_view.shape=} / {self.result_view.shape=}')
         while running:
             cv.imshow('RESULT', self.result_view)
             cv.imshow('SOURCE', self.source_view)
             key = cv.waitKey(1)
             if   key == 27: running = False     # esc: quit
             elif key == 32: self._cut()         # spc: do grabcut
+            elif key == 26: self._undo_cut()    # ctrl-z
             elif key == ord('s'): self._save()
             elif key == ord('c'): self._clear_draws()
             elif key == ord('r'):               # restart
                 cv.destroyAllWindows()
                 return True
-            elif key == ord('z'): # and cv.EVENT_FLAG_CTRLKEY: # how to check for kmod ctrl??? -> self._undo_cut()
-                print('z')
-            elif key == ord('z') & cv.EVENT_FLAG_CTRLKEY:
-                print('ctrl-z')
-                # self._undo_cut()
         cv.destroyAllWindows()
         return False
+
 
 if __name__ == '__main__':
     sources = read_sources()
