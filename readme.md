@@ -1,7 +1,7 @@
 Cut an object from the background in an image file, save the object as 4 channel image with transparent bg.
 
 # Usage
-1. move your source image(s) to 'source images/', then run chop.py
+1. move your source image(s) to 'source images/', then run chop.py() without arguments
 3. choose a source, then press spacebar
 4. click-drag to select the ROI (region of interest; the object's bounding rectangle), then press spacebar
 5. use mouse and keys to remove the background:

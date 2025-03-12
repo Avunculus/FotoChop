@@ -2,8 +2,8 @@ import numpy as np
 import cv2 as cv
 import os
 
-W, H = (1920, 1080)
-GC_MAX_PIXELS = 1000 * 1000  # pixel cap for scaling images sent to cv.grabcut()
+W, H = (1280, 720)
+GC_MAX_PIXELS = 2000 * 1000  # pixel cap for scaling images sent to cv.grabcut()
 BLUE = [255,0,0]
 BLACK = [0,0,0]
 WHITE = [255,255,255]
@@ -22,6 +22,7 @@ def scaledown_fit(img: np.ndarray, limit: int|tuple[int,int]) -> tuple[np.ndarra
         scale += 1
     shape = (w // scale, h // scale)
     img = cv.resize(img, shape)
+    print(f'image scaled: {scale=}')
     return (img, scale)
     # OLD:
     # if   isinstance(limit, int)  : too_big = lambda w, h, k: (w * h) // (k * k) > limit
@@ -111,19 +112,23 @@ class GrabCutter:
         roi = (x, y, w, h)
         # source, result, views
         self.source = image[y: y + h, x: x + w] # source = ROI; outside roi forgotten
+        print(f'ROI selected: {self.source.shape=}')
         self.source_view, self.view_scale = scaledown_fit(self.source.copy(), (W, H))
+        print(f'{self.source_view.shape=}')
+        self.source_view_clean = self.source_view.copy()
         self.result = np.zeros_like(self.source)
         self.result_view = self.source_view.copy()
         # cv.grabcut() args
         self.gc_source, self.gc_scale = scaledown_fit(self.source, GC_MAX_PIXELS)
         self.gc_mask = np.ones(self.gc_source.shape[:2], dtype= np.uint8) * cv.GC_PR_FGD    # all px presumed probable FG
-        self.bgm = np.zeros((1, 65), np.float64)    # background model
-        self.fgm = np.zeros((1, 65), np.float64)    # foreground model
+        # self.bgm = np.zeros((1, 65), np.float64)    # background model
+        # self.fgm = np.zeros((1, 65), np.float64)    # foreground model
         self.cut_count = 0
         # draws and undos
         self.drawing  = -1       # 0 = drawing bg, 1 = drawing fg
         self.draw_rad =  3       # brush radius
-        self.pre_cut  = (self.gc_mask.copy(), self.bgm.copy(), self.fgm.copy())    # for undoing cuts
+        self.mask_pre_cut  = self.gc_mask.copy()
+        # self.pre_cut  = (self.gc_mask.copy(), self.bgm.copy(), self.fgm.copy())    # for undoing cuts
         self.mask_post_cut = self.gc_mask.copy()    # for clearing draws
 
     def _update_result(self):
@@ -133,51 +138,37 @@ class GrabCutter:
         h, w = self.source.shape[:2]
         mask = cv.resize(mask, (w, h))
         self.result = self.source * mask[:, :, np.newaxis]
-        self.result_view = cv.resize(self.result, (w * self.view_scale, h * self.view_scale))
+        self.result_view = cv.resize(self.result, (w // self.view_scale, h // self.view_scale))
         # save b/w mask
         mask *= 255
+        h, w = self.gc_mask.shape[:2]
         cv.imwrite(f'chopped/{self.name}_MASK_.jpg', mask)
         # reset view for new draws
-        self.source_view = self.source.copy() 
+        self.source_view = self.source_view_clean.copy()
 
     def _cut(self):
         print('cutting...')
-        self.pre_cut = (self.gc_mask.copy(), self.bgm.copy(), self.fgm.copy()) 
-        self.gc_mask, self.bgm, self.fgm = \
-            cv.grabCut(self.gc_source, self.gc_mask, None, self.bgm, self.fgm, 1, cv.GC_INIT_WITH_MASK)
+        bgm = np.zeros((1, 65), np.float64)    # background model
+        fgm = np.zeros((1, 65), np.float64)    # foreground model
+        self.mask_pre_cut = self.gc_mask.copy()
+        # self.pre_cut = (self.gc_mask.copy(), self.bgm.copy(), self.fgm.copy()) 
+        # ! weird... crashes when trying to do first cut with no draw or fg only draws...
+        # -> !! marking bg required: can't init if all probable fg: nothing to model
+        # --> !!! so we do need to init with rect...
+        # ---> do first 'rough cut' from ROI crop (low gc_res) to build fg/bg models, THEN SCALE UP
+        self.gc_mask, _, _ = \
+            cv.grabCut(self.gc_source, self.gc_mask, None, bgm, fgm, 1, cv.GC_INIT_WITH_MASK)
         self.mask_post_cut = self.gc_mask.copy()
         self.cut_count += 1
         print(f'cut # {self.cut_count} complete')
         self._update_result()
-        # OLD:
-        # print('cutting...')
-        # self.gc_mask, self.bgm, self.fgm \
-        #     = cv.grabCut(self.gc_img, self.gc_mask, None, self.bgm, self.fgm, 1, cv.GC_INIT_WITH_MASK)
-        # make img_mask -> scale up -> make composite, set self.result= 
-        # mask = np.where((self.gc_mask==2)|(self.gc_mask==0), 0, 1).astype('uint8')
-        # h, w = self.source_roi.shape[:2]
-        # self.img_mask = cv.resize(mask, (w, h))
-        # result = self.source_roi * self.img_mask[:, :, np.newaxis]
-        # result = cv.cvtColor(result, cv.COLOR_BGR2BGRA) # ?
-        # cache prev result:
-        # messed this up... don;'t need to keep resultant image cpoy for undos--JUST MASK. re-do attributes...
-        # self.temp_result = self.result.copy() if self.result else result
-        # self.result = result
-        # self.result_view, _ = scaledown_fit(self.result, (W, H))
-        # self.cut_count += 1
-        # self.view_img = self.view_img_cached.copy()
-        # self.gc_mask_cached = self.gc_mask.copy()  
-        # print(f'cut # {self.cut_count} complete:\tpx count = {np.count_nonzero(self.img_mask):,}')
-        # # !! make mask window viewable for feeedback
-        # mask = self.img_mask * 255
-        # cv.imwrite(f'bin/{self.name}_MASK__.png', mask)
-        
 
     def _undo_cut(self):
         if self.cut_count < 1:
             return
         print('undoing cut')
-        self.gc_mask, self.bgm, self.fgm = [m.copy() for m in self.pre_cut]
+        self.gc_mask = self.mask_pre_cut.copy()
+        # self.gc_mask, self.bgm, self.fgm = [m.copy() for m in self.pre_cut]
         self.cut_count -= 1
         self._update_result()
 
@@ -189,7 +180,7 @@ class GrabCutter:
 
     def _clear_draws(self):
         self.gc_mask = self.mask_post_cut.copy()
-        self.source_view = self.source.copy()
+        self.source_view = self.source_view_clean.copy()
 
     def _handle_mouse(self, event, x, y, flags, *args):
         if event in [cv.EVENT_LBUTTONDOWN, cv.EVENT_RBUTTONDOWN]:
@@ -201,7 +192,8 @@ class GrabCutter:
             self.drawing = -1
 
     def _save(self):
-        path = f'chopped/{self.name}_CHOPPED_.png'
+        h, w = self.gc_mask.shape[:2]
+        path = f'chopped/{self.name}_CHOPPED_({self.cut_count} cuts at {w}x{h}).png'
         # convert to 4-channel
         result = cv.cvtColor(self.result, cv.COLOR_BGR2BGRA)
         print(f'saving result: {result.shape=}')
@@ -209,11 +201,12 @@ class GrabCutter:
 
     def run(self) -> bool:
         cv.namedWindow('RESULT')
-        cv.moveWindow('RESULT', 100, 0)
+        cv.moveWindow('RESULT', 640, 0)
         cv.namedWindow('SOURCE')
         cv.moveWindow('SOURCE', 0, 0) 
         cv.setMouseCallback('SOURCE', self._handle_mouse) 
         running = True
+        print(f'{self.source_view.shape=} / {self.result_view.shape=}')
         while running:
             cv.imshow('RESULT', self.result_view)
             cv.imshow('SOURCE', self.source_view)
