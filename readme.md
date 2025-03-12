@@ -7,7 +7,7 @@ Cut an object from the background in an image file, save the object as 4 channel
 5. use mouse and keys to remove the background:
 - use mouse buttons to indicate areas that are **definite foreground (left-click)** or **definite background (right-click).**
 - press spacebar at any time, with or without additional draws, to call one iter of cv.grabcut().
-- the number of iters needed to get clean edges varies; I find 3-6 iters is usually good.
+- the number of iters needed to get clean edges varies; I find 4-6 iters is usually good.
 6. save the result by pressing 's'
 
 # Keymap
