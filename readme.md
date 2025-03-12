@@ -1,7 +1,7 @@
 Cut an object from the background in an image file, save the object as 4 channel image with transparent bg.
 
 # Usage
-1. move your source image(s) to 'source images/', then run chop.py 
+1. move your source image(s) to 'source images/', then run chop.py
 3. choose a source, then press spacebar
 4. click-drag to select the ROI (region of interest; the object's bounding rectangle), then press spacebar
 5. use mouse and keys to remove the background:
@@ -19,5 +19,5 @@ Cut an object from the background in an image file, save the object as 4 channel
 |r-click  |draw: definite background |
 |ctrl-z   |undo most recent cut |
 |c        |clear all draws, undo all cuts (keeps ROI) |
-|s        |save object image to 'segments/___.png' |
+|s        |save object image to 'chopped/{filename}\_CHOPPED_.png' |
 |r        |restart (choose new image) |
