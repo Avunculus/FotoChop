@@ -3,7 +3,7 @@ import cv2 as cv
 import os
 
 W, H    = (1280, 720)
-MAX_PXL = 2000 * 1000  # pixel cap for scaling image sent to cv.grabcut()
+MAX_PXL = 1000 * 1000  # pixel cap for scaling image sent to cv.grabcut()
 BLUE    = [255,0,0]
 BLACK   = [0,0,0]
 WHITE   = [255,255,255]
@@ -146,14 +146,14 @@ class GrabCutter:
         cv.imwrite(f'chopped/{self.name}_MASK_.jpg', mask)
 
     def _cut(self):
-        print('cutting...')
+        print('cutting...', end='')
         self.mask_pre_cut = self.gc_mask.copy()
         self.gc_mask, self.bgm, self.fgm = \
             cv.grabCut(self.gc_source, self.gc_mask, None,
                        self.bgm, self.fgm, 1, cv.GC_INIT_WITH_MASK)
         self.mask_post_cut = self.gc_mask.copy()
         self.cut_count += 1
-        print(f'cut # {self.cut_count} complete')
+        print(f' cut # {self.cut_count} complete.\tpixels: [add bitmask.nonzero() for pixel counts...]')
         self._update_result()
 
     def _undo_cut(self):
@@ -184,8 +184,15 @@ class GrabCutter:
     def _save(self):
         path = f'chopped/{self.name}_CHOPPED_({self.cut_count} cuts).png'
         result = cv.cvtColor(self.result, cv.COLOR_BGR2BGRA) # convert to 4-channel
-        cv.imwrite(path, result)
+        print(f'{result[0,0]=}')
 
+        # result[:, :, 3] = np.where(result[:, :, :3] == [0, 0, 0], 0, 255)
+        for i in range(result.shape[0]):
+            for j in range(result.shape[1]):
+                result[i, j, 3] = 0 if not any(result[i, j, :3]) else 255
+        print(f'{result[0,0]=}')
+        # add transparency ([0,0,0,255]->[0,0,0,0])
+        cv.imwrite(path, result, [cv.IMWRITE_PNG_COMPRESSION, 0])
     def run(self) -> bool:
         cv.namedWindow('RESULT')
         cv.moveWindow('RESULT', 640, 0)
