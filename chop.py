@@ -66,7 +66,7 @@ class ImagePicker:
 
     def _update_view(self):
         y0 = self.y_offset * self.box_h
-        self.view = self.image[y0 : y0 + self.view.shape[0], ...]
+        self.view = self.image.copy()[y0 : y0 + self.view.shape[0], ...]
         if self.selected:
             point_a = (0, self.box_h * self.selections.index(self.selected))
             point_b = (self.w, point_a[1] + self.box_h)
@@ -92,7 +92,7 @@ class ImagePicker:
         while running:
             cv.imshow('select source, then press spacebar', self.view)
             key = cv.waitKey(1)
-            if key: print(f'{key=}')
+            if key > 0: print(f'{key=}')
             if key == 27: running = False       # esc: quit
             elif key == 69|70:                  # u/d arrows
                 self._scroll_view(pull_down=key == 69)
@@ -153,11 +153,13 @@ class GrabCutter:
         self.draw_rad  =  3       # brush radius
         self.mask_pre_cut  = self.gc_mask.copy()    # for undoing cuts
         self.mask_post_cut = self.gc_mask.copy()    # for clearing draws
-        self.bitmask = np.where((gc_mask==2)|(gc_mask==0), 0, 1).astype('uint8')
+        self.bitmask = cv.resize(np.where((gc_mask==2)|(gc_mask==0), 0, 255).astype('uint8'), 
+                                 (self.source_view.shape[1], self.source_view.shape[0]))
 
     def _update_result(self):
         self.result, mask = apply_gc_mask(self.gc_mask, self.source)
-        self.bitmask = np.where((mask==2)|(mask==0), 0, 1).astype('uint8')
+        self.bitmask = mask.copy()
+        # self.bitmask = np.where((mask==2)|(mask==0), 0, 1).astype('uint8')
         h, w = self.result_view.shape[:2]
         self.result_view = cv.resize(self.result.copy(), (w, h))
         self.source_view = self.source_view_clean.copy()
