@@ -68,7 +68,7 @@ class ImagePicker:
         y0 = self.y_offset * self.box_h
         self.view = self.image.copy()[y0 : y0 + self.view.shape[0], ...]
         if self.selected:
-            point_a = (0, self.box_h * self.selections.index(self.selected))
+            point_a = (0, self.box_h * (self.selections.index(self.selected) - self.y_offset))
             point_b = (self.w, point_a[1] + self.box_h)
             cv.rectangle(self.view, point_a, point_b, BLUE, 3)
         
