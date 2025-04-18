@@ -1,12 +1,12 @@
 import numpy as np
 import cv2 as cv
 import os
-
+SCROLL_BY = 15
 W, H    = (1280, 720)
 MAX_PXL = 1000 * 1000  # pixel cap for scaling image sent to cv.grabcut()
-BLUE    = [255,0,0]
-BLACK   = [0,0,0]
-WHITE   = [255,255,255]
+BLUE    = [255, 0, 0]
+BLACK   = [0, 0, 0]
+WHITE   = [255, 255, 255]
 BRUSHES = {0: {'view': BLACK, 'mask': cv.GC_BGD},       # background
            1: {'view': WHITE, 'mask': cv.GC_FGD}}       # foreground
 # 2 == cv.GC_PR_BGD; 3 == cv.GC_PR_FGD
@@ -40,6 +40,71 @@ def read_sources() -> dict[str,np.ndarray]:
         sources[fn] = cv.imread('source images/thumbnails/' + name + '.jpg')
     return sources
 
+class ImagePicker:
+    def __init__(self, sources:dict[str,np.ndarray]):
+        self.sources = sources      # {'xyz.png': thumbnail img}
+        self.box_h = 70
+        self.box_w = 70
+        txt_width = 500
+        self.w = self.box_w + txt_width
+        self.h = self.box_h * len(self.sources)
+        self.image = np.zeros((self.h, self.w, 3), np.uint8)
+        # draw thumbnails, filenames
+        x0, y0 = (3, 3)             # 3px buffer (each side) in x and y: 64x64 -> 70x70
+        for i, (fname, thumb) in enumerate(self.sources.items()):
+            h, w = thumb.shape[:2]
+            x = x0 + (self.box_w - w) // 2
+            y = (y0 + self.box_h * i) + (self.box_h - h) // 2
+            self.image[y : y + h, x : x + w] = thumb
+            cv.putText(self.image, fname, (76, y + self.box_h // 2),
+                       cv.FONT_HERSHEY_TRIPLEX, 1, [222, 222, 222])
+        self.y_offset = 0
+        self.max_offset = len(self.sources) % (H // self.box_h)
+        self.view = self.image[0 : min(self.h, H), :, :]
+        self.selections = list(self.sources.keys())
+        self.selected: str = None   # file name (WITH .ext)
+
+    def _update_view(self):
+        y0 = self.y_offset * self.box_h
+        self.view = self.image[y0 : y0 + self.view.shape[0], ...]
+        if self.selected:
+            point_a = (0, self.box_h * self.selections.index(self.selected))
+            point_b = (self.w, point_a[1] + self.box_h)
+            cv.rectangle(self.view, point_a, point_b, BLUE, 3)
+        
+    def _handle_mouse(self, event, x, y, *args):
+        if event == cv.EVENT_LBUTTONDOWN:
+            self.selected = self.selections[self.y_offset + y // self.box_h]
+            self._update_view()
+        elif event == cv.EVENT_MOUSEWHEEL:
+            self._scroll_view(pull_down=args[0] > 0)
+
+    def _scroll_view(self, pull_down:bool):
+        if pull_down and self.y_offset > 0: self.y_offset -= 1
+        elif not pull_down and self.y_offset < self.max_offset: self.y_offset += 1
+        self._update_view()
+
+    def run(self) -> tuple[np.ndarray,str]:
+        assert len(self.sources) > 0, 'no source images found'
+        cv.namedWindow('select source, then press spacebar')
+        cv.setMouseCallback('select source, then press spacebar', self._handle_mouse) 
+        running = True
+        while running:
+            cv.imshow('select source, then press spacebar', self.view)
+            key = cv.waitKey(1)
+            if key: print(f'{key=}')
+            if key == 27: running = False       # esc: quit
+            elif key == 69|70:                  # u/d arrows
+                self._scroll_view(pull_down=key == 69)
+
+            elif key == 32 and self.selected:   # spc: accept
+                cv.destroyAllWindows()
+                return (cv.imread('source images/' + self.selected),
+                        self.selected.split('.')[0])
+        cv.destroyAllWindows()
+        return (None, '[user quit]')
+
+
 def apply_gc_mask(gc_mask: np.ndarray, source: np.ndarray) -> tuple[np.ndarray,np.ndarray]:
     """Removes pixels marked BG/PR_BG in the gc_mask from source. Scales gc_mask up to source.
     Returns new image and b&w bitmask (scaled to image) as tuple: (image, bitmask)"""
@@ -50,55 +115,6 @@ def apply_gc_mask(gc_mask: np.ndarray, source: np.ndarray) -> tuple[np.ndarray,n
     image = source * mask[:, :, np.newaxis] 
     mask *= 255     # mask -> b&w
     return (image, mask)
-
-
-class ImagePicker:
-    def __init__(self, sources:dict[str,np.ndarray]):
-        self.sources = sources      # {'xyz.png': thumbnail img}
-        self.box_h = 70
-        self.box_w = 70
-        txt_width = 500
-        self.w = self.box_w + txt_width
-        self.h = self.box_h * len(self.sources)     # FUTURE: add scrolling...
-        self.image = np.zeros((self.h, self.w, 3), np.uint8)
-        x0, y0 = (3, 3)             # 3px buffer (each side) in x and y: 64x64 -> 70x70
-        for i, (fname, thumb) in enumerate(self.sources.items()):
-            h, w = thumb.shape[:2]
-            x = x0 + (self.box_w - w) // 2
-            y = (y0 + self.box_h * i) + (self.box_h - h) // 2
-            self.image[y : y + h, x : x + w] = thumb
-            cv.putText(self.image, fname, (76, y + self.box_h // 2),
-                       cv.FONT_HERSHEY_TRIPLEX, 1, [222, 222, 222])
-        self.y0 = 0                 # y origin; for scrolling / mapping clicks
-        self.file_map = {i: key for i, key in enumerate(self.sources.keys())}
-        self.view = self.image.copy()
-        self.selected: str = None   # file name (WITH .ext)
-
-    def _handle_mouse(self, event, x, y, *args):
-        if event == cv.EVENT_LBUTTONDOWN:
-            file_ix = (self.y0 + y) // self.box_h
-            self.selected = self.file_map[file_ix]
-            self.view = self.image.copy()       # copy source image to clear previous rect
-            cv.rectangle(self.view, (0, file_ix * self.box_h),
-                         (self.w, self.box_h + file_ix * self.box_h), BLUE, 3)
-        elif event == cv.EVENT_MOUSEWHEEL: ...  # FUTURE: scolling
-
-    def run(self) -> tuple[np.ndarray,str]:
-        assert len(self.sources) > 0, 'no source images found'
-        cv.namedWindow('select source, then press spacebar')
-        cv.setMouseCallback('select source, then press spacebar', self._handle_mouse) 
-        running = True
-        while running:
-            cv.imshow('select source, then press spacebar', self.view)
-            key = cv.waitKey(1)
-            if key == 27: running = False       # esc: quit
-            elif key == 32 and self.selected:   # spc: accept
-                cv.destroyAllWindows()
-                return (cv.imread('source images/' + self.selected),
-                        self.selected.split('.')[0])
-        cv.destroyAllWindows()
-        return (None, '[user quit]')
-
 
 class GrabCutter:
     def __init__(self, image: np.ndarray, job_name: str):
@@ -137,13 +153,15 @@ class GrabCutter:
         self.draw_rad  =  3       # brush radius
         self.mask_pre_cut  = self.gc_mask.copy()    # for undoing cuts
         self.mask_post_cut = self.gc_mask.copy()    # for clearing draws
+        self.bitmask = np.where((gc_mask==2)|(gc_mask==0), 0, 1).astype('uint8')
 
     def _update_result(self):
         self.result, mask = apply_gc_mask(self.gc_mask, self.source)
+        self.bitmask = np.where((mask==2)|(mask==0), 0, 1).astype('uint8')
         h, w = self.result_view.shape[:2]
         self.result_view = cv.resize(self.result.copy(), (w, h))
         self.source_view = self.source_view_clean.copy()
-        cv.imwrite(f'chopped/{self.name}_MASK_.jpg', mask)
+        # cv.imwrite(f'chopped/{self.name}_MASK_.jpg', mask)
 
     def _cut(self):
         print('cutting...', end='')
@@ -193,9 +211,12 @@ class GrabCutter:
         print(f'{result[0,0]=}')
         # add transparency ([0,0,0,255]->[0,0,0,0])
         cv.imwrite(path, result, [cv.IMWRITE_PNG_COMPRESSION, 0])
+
     def run(self) -> bool:
         cv.namedWindow('RESULT')
         cv.moveWindow('RESULT', 640, 0)
+        cv.namedWindow('MASK')
+        cv.moveWindow('MASK', 320, 0)
         cv.namedWindow('SOURCE')
         cv.moveWindow('SOURCE', 0, 0) 
         cv.setMouseCallback('SOURCE', self._handle_mouse) 
@@ -203,15 +224,16 @@ class GrabCutter:
         while running:
             cv.imshow('RESULT', self.result_view)
             cv.imshow('SOURCE', self.source_view)
+            cv.imshow('MASK', self.bitmask)
             key = cv.waitKey(1)
-            if   key == 27: running = False     # esc: quit
-            elif key == 32: self._cut()         # spc: do grabcut
-            elif key == 26: self._undo_cut()    # ctrl-z
+            if   key == 27: running = False             # esc: quit
+            elif key == 32: self._cut()                 # spc: do grabcut
+            elif key == 26: self._undo_cut()            # ctrl-z
             elif key == ord('s'): self._save()
             elif key == ord('c'): self._clear_draws()
-            elif key == ord('e'): ...   # FUTURE: erode image mask
-            elif key == ord('d'): ...   # FUTURE: dilate image mask
-            elif key == ord('r'):       # restart
+            elif key == ord('e'): self._erode_mask()
+            elif key == ord('d'): self._dilate_mask()
+            elif key == ord('r'):                       # restart
                 cv.destroyAllWindows()
                 return True
         cv.destroyAllWindows()
