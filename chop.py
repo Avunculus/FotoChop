@@ -94,9 +94,6 @@ class ImagePicker:
             key = cv.waitKey(1)
             if key > 0: print(f'{key=}')
             if key == 27: running = False       # esc: quit
-            elif key == 69|70:                  # u/d arrows
-                self._scroll_view(pull_down=key == 69)
-
             elif key == 32 and self.selected:   # spc: accept
                 cv.destroyAllWindows()
                 return (cv.imread('source images/' + self.selected),
@@ -104,17 +101,12 @@ class ImagePicker:
         cv.destroyAllWindows()
         return (None, '[user quit]')
 
-
-def apply_gc_mask(gc_mask: np.ndarray, source: np.ndarray) -> tuple[np.ndarray,np.ndarray]:
-    """Removes pixels marked BG/PR_BG in the gc_mask from source. Scales gc_mask up to source.
-    Returns new image and b&w bitmask (scaled to image) as tuple: (image, bitmask)"""
+def first_cut(gc_mask: np.ndarray, source: np.ndarray) -> np.ndarray:
+    """Removes pixels marked BG/PR_BG in the gc_mask from source. Scales gc_mask up to source."""
     mask = np.where((gc_mask==2)|(gc_mask==0), 0, 1).astype('uint8')
-    # scale up, apply to source 
     h, w = source.shape[:2]
     mask = cv.resize(mask, (w, h))
-    image = source * mask[:, :, np.newaxis] 
-    mask *= 255     # mask -> b&w
-    return (image, mask)
+    return source * mask[:, :, np.newaxis] 
 
 class GrabCutter:
     def __init__(self, image: np.ndarray, job_name: str):
@@ -133,11 +125,11 @@ class GrabCutter:
         bgm = np.zeros((1, 65), np.float64)    # background model: init from full img on first cut
         fgm = np.zeros((1, 65), np.float64)    # foreground model: init from full img on first cut
         gc_mask, bgm, fgm = cv.grabCut(gc_img, gc_mask, roi, bgm, fgm, 1, cv.GC_INIT_WITH_RECT)
-        result, _ = apply_gc_mask(gc_mask, image)
+        result = first_cut(gc_mask, image)
         gc_mask = gc_mask[y: y + h, x: x + w]
         x, y, w, h = [n * gc_scale for n in roi] # scale up to full
         # set job attributes
-        self.name = job_name
+        self.job_name = job_name
         self.source = image[y: y + h, x: x + w]; print(f'ROI selected: {self.source.shape=}')
         self.source_view, self.view_scale = scaledown_fit(self.source.copy(), (W, H))
         self.source_view_clean = self.source_view.copy()   # not drawn to
@@ -156,15 +148,12 @@ class GrabCutter:
         self.bitmask = cv.resize(np.where((gc_mask==2)|(gc_mask==0), 0, 255).astype('uint8'), 
                                  (self.source_view.shape[1], self.source_view.shape[0]))
 
-    def _update_result(self):
-        self.result, mask = apply_gc_mask(self.gc_mask, self.source)
-        self.bitmask = mask.copy()
-        # self.bitmask = np.where((mask==2)|(mask==0), 0, 1).astype('uint8')
+    def _refresh_views(self):
         h, w = self.result_view.shape[:2]
         self.result_view = cv.resize(self.result.copy(), (w, h))
+        self.bitmask = cv.resize(self.bitmask, (w, h))
         self.source_view = self.source_view_clean.copy()
-        # cv.imwrite(f'chopped/{self.name}_MASK_.jpg', mask)
-
+        
     def _cut(self):
         print('cutting...', end='')
         self.mask_pre_cut = self.gc_mask.copy()
@@ -174,24 +163,30 @@ class GrabCutter:
         self.mask_post_cut = self.gc_mask.copy()
         self.cut_count += 1
         print(f' cut # {self.cut_count} complete.\tpixels: [add bitmask.nonzero() for pixel counts...]')
-        self._update_result()
+        self._apply_mask()
+
+    def _apply_mask(self, from_gc_mask:bool=True) -> None:
+        mask = np.where((self.gc_mask==2)|(self.gc_mask==0), 0, 1).astype('uint8')\
+            if from_gc_mask else self.bitmask // 255
+        h, w = self.source.shape[:2]
+        mask = cv.resize(mask, (w, h))
+        self.result = self.source * mask[:, :, np.newaxis]
+        if from_gc_mask: self.bitmask = cv.resize(mask.copy(), (w, h)) * 255 # update bitmask if cutting from cv.grabut()
+        self._refresh_views()
 
     def _undo_cut(self):
         if self.cut_count < 1: return
         self.gc_mask = self.mask_pre_cut.copy()
         self.cut_count -= 1
-        self._update_result()
-
+        self._refresh_views()
     def _draw(self, x, y):
         # draw to view, scaled up draw to mask: (x|y|w|h * view_scale) // gc_scale
         cv.circle(self.source_view, (x, y), self.draw_rad, BRUSHES[self.drawing]['view'], -1)
         x0, y0, rad = [(n * self.view_scale) // self.gc_scale for n in (x, y, self.draw_rad)]
         cv.circle(self.gc_mask, (x0, y0), rad, BRUSHES[self.drawing]['mask'], -1)
-
     def _clear_draws(self):
         self.gc_mask = self.mask_post_cut.copy()
         self.source_view = self.source_view_clean.copy()
-
     def _handle_mouse(self, event, x, y, flags, *args):
         if event in [cv.EVENT_LBUTTONDOWN, cv.EVENT_RBUTTONDOWN]:
             self.drawing = int(event == cv.EVENT_LBUTTONDOWN)
@@ -201,19 +196,30 @@ class GrabCutter:
         elif event in [cv.EVENT_LBUTTONUP, cv.EVENT_RBUTTONUP]:
             self.drawing = -1
 
-    def _save(self):
-        path = f'chopped/{self.name}_CHOPPED_({self.cut_count} cuts).png'
-        result = cv.cvtColor(self.result, cv.COLOR_BGR2BGRA) # convert to 4-channel
-        print(f'{result[0,0]=}')
+    def _erode_mask(self):
+        size = 3
+        element = cv.getStructuringElement(cv.MORPH_RECT, (2 * size + 1, 2 * size + 1), (size, size))
+        self.bitmask = cv.erode(self.bitmask, element)
+        ... # size, shape -> structuruing element; erode|dilate
+        self._apply_mask(from_gc_mask=False)
 
-        # result[:, :, 3] = np.where(result[:, :, :3] == [0, 0, 0], 0, 255)
-        for i in range(result.shape[0]):
+    def _dilate_mask(self):
+        size = 3
+        element = cv.getStructuringElement(cv.MORPH_RECT, (2 * size + 1, 2 * size + 1), (size, size))
+        self.bitmask = cv.erode(self.bitmask, element)
+        self._apply_mask(from_gc_mask=False)
+
+    def _save(self):
+        print('saving...', end='')
+        path = f'chopped/{self.job_name}.png'
+        # convert to 4-channel, set transparency
+        result = cv.cvtColor(self.result, cv.COLOR_BGR2BGRA) 
+        for i in range(result.shape[0]):    # laaaazyyyyy....
             for j in range(result.shape[1]):
                 result[i, j, 3] = 0 if not any(result[i, j, :3]) else 255
-        print(f'{result[0,0]=}')
-        # add transparency ([0,0,0,255]->[0,0,0,0])
         cv.imwrite(path, result, [cv.IMWRITE_PNG_COMPRESSION, 0])
-
+        cv.imwrite(f'chopped/{self.job_name}_MASK.jpg', self.bitmask)
+        print(f'...complete.\nSaved as: {path}')
     def run(self) -> bool:
         cv.namedWindow('RESULT')
         cv.moveWindow('RESULT', 640, 0)
@@ -241,12 +247,27 @@ class GrabCutter:
         cv.destroyAllWindows()
         return False
 
+def get_job_names() -> list[str]:
+    return [n.split('.')[0] for n in os.listdir('chopped/') if '.' in n]
+
+def set_job_name(base_name:str, reserved:list[str]) -> str:
+    i = 0
+    name = base_name
+    while name in reserved:
+        i += 1
+        name = base_name + '_' + repr(i)
+    return name
 
 if __name__ == '__main__':
     sources = read_sources()
     image, name = ImagePicker(sources).run()
+    prev_jobs = get_job_names()
+    name = set_job_name(name, prev_jobs)
     repeat = GrabCutter(image, name).run() if image is not None else False
     while repeat:
+        sources = read_sources()
         image, name = ImagePicker(sources).run()
+        prev_jobs = get_job_names()
+        name = set_job_name(name, prev_jobs)
         repeat = GrabCutter(image, name).run() if image is not None else False
     print('Done')
