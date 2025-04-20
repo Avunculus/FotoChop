@@ -1,5 +1,7 @@
 from constants import *
 
+BUTTON = np.ix_(np.arange(10, 190), np.arange(10, 190))
+
 def scaledown_fit_view(image:np.ndarray) -> np.ndarray:
     h, w  = image.shape[:2]
     shape = (round(SIDE * w / h), SIDE) if h > w else (SIDE, round(SIDE * h / w))
@@ -15,9 +17,10 @@ def draw_main_win(image:np.ndarray) -> np.ndarray:
     v_border = (SIDE - h) // 2
     h_border = (SIDE - w) // 2
     image = cv.copyMakeBorder(image, v_border, v_border, h_border, h_border,
-                              cv.BORDER_CONSTANT, value=COLORS[-2])
+                              cv.BORDER_CONSTANT, value=COLORS[-3])
     image = cv.copyMakeBorder(image, 0, 0, BAR, 0,
-                              cv.BORDER_CONSTANT, value=COLORS[-1])
+                              cv.BORDER_CONSTANT, value=COLORS[-2])
+    image[BUTTON] = COLORS[4]
     return image
 # MAIN = np.ones((1000, 1250, 4))
 # MAIN[:, :250, :3] *= [0, 255, 0]
