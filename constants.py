@@ -1,8 +1,8 @@
 import cv2 as cv
 import numpy as np
 
-SIDE = 800
-BAR = 200
+SIDE = 720
+BAR = 140
 
 # COLORS_3C = [[  0,   0,   0],
             #  [255, 255, 255],
@@ -21,3 +21,8 @@ COLORS = [[  0,   0,   0, 255],
           [ 64,  24, 124, 255],
           [  0,   0,   0,   0]]
 
+BUTTONS = {
+    'MAIN':    {( 20,  10, 100, 100): ('SEGMENTOR', COLORS[-3]),
+                ( 20, 130, 100, 100): ('CHOPJOB', COLORS[-4])},
+    'CHOPJOB': {( 32,  32,  64,  64): ('SAMPLE', COLORS[2])}
+    }
