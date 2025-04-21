@@ -2,6 +2,18 @@ from constants import *
 
 # BUTTON = np.ix_(np.arange(10, 190), np.arange(10, 190))
 
+def square_frame(image:np.ndarray, side:int):
+    """returns image resized to fit long side into square frame, with padding (return image is a square)"""
+    h, w  = image.shape[:2]
+    shape = (round(side * w / h), side) if h > w else (side, round(side * h / w))
+    square = cv.resize(image, shape)
+    if h > w: # portrait
+        cv.copyMakeBorder(square, 0, 0, (side - w) // 2, (side - w) // 2, cv.BORDER_CONSTANT, value=0) #[0] * image.shape[2])
+    else:
+        cv.copyMakeBorder(square, (side - h) // 2, (side - h) // 2, 0, 0, cv.BORDER_CONSTANT, value=0) 
+    return square
+
+
 def scaledown_fit_view(image:np.ndarray, side=SIDE) -> np.ndarray:
     h, w  = image.shape[:2]
     shape = (round(side * w / h), side) if h > w else (side, round(side * h / w))
@@ -25,13 +37,13 @@ def draw_main_win(image:np.ndarray) -> np.ndarray:
     # padding
     v_border = (SIDE - h) // 2
     h_border = (SIDE - w) // 2
-    img_pos = (BAR + h_border, v_border, w, h)
+    # img_pos = (BAR + h_border, v_border, w, h)
     image = cv.copyMakeBorder(image, v_border, v_border, h_border, h_border,
                               cv.BORDER_CONSTANT, value=COLORS[-3])
     image = cv.copyMakeBorder(image, 0, 0, BAR, 0,
                               cv.BORDER_CONSTANT, value=COLORS[-2])
     draw_main_buttons(image)
-    return (image, img_pos)
+    return image
 
 def draw_chopjob_win(image:np.ndarray) -> np.ndarray:
     h, w = image.shape[:2]

@@ -6,7 +6,6 @@ def pick_source() -> tuple[np.ndarray, str]:
     fn = 'uncle baby billy.jpg'
     ###
     name = 'sources/' + fn
-    
     image = cv.imread(name)
     match image.shape[2]: # check Color format, convert to 4 channel?
         case 1: image = cv.cvtColor(image, cv.COLOR_GRAY2BGRA) # grayscale
@@ -30,12 +29,13 @@ def get_roi(image:np.ndarray) -> tuple[int,int,int,int]:
 
 class Segmentor:
     def __init__(self, source:np.ndarray):
-        self.source = cv.cvtColor(source, cv.COLOR_BGRA2BGR) # 3-channel for grabcut
+        self.source = source[:, :, :3] #cv.cvtColor(source, cv.COLOR_BGRA2BGR) # 3-channel for grabcut
         self.window = np.zeros((SIDE, 2 * SIDE + BAR, 3))
 
     def handle_mouse(self, event:int, x:int, y:int, flags:int, param):
         if event == cv.EVENT_LBUTTONDOWN:
             print(f'clicked \'SEGMENT\' window @ ({x}, {y})')
+            test = SOURCE
 
     def run(self):
         # self.segment = np.zeros(self.source.shape[:2], dtype=np.uint8)
@@ -61,16 +61,16 @@ class Segmentor:
 
 
 def mouse_main(event:int, x:int, y:int, flags:int, param):
-    source, win_main, img_pos = param
+    # source, win_main, img_pos = param
     if event == cv.EVENT_LBUTTONDOWN:
         button = check_click((x, y), {rect:val[0] for rect, val in BUTTONS['MAIN'].items()})
         if button == 'SEGMENTOR':
-            Segmentor(source).run()
+            Segmentor(SOURCE).run()
 
 def main(source:np.ndarray, path:str) -> bool:
-    win_main, img_pos = draw_main_win(source)
+    win_main = draw_main_win(source)
     cv.namedWindow('MAIN')
-    cv.setMouseCallback('MAIN', mouse_main, (source, win_main, img_pos))
+    cv.setMouseCallback('MAIN', mouse_main)
     while True:
         cv.imshow('MAIN', win_main)
         key = cv.waitKey(1)
