@@ -2,17 +2,30 @@ from constants import *
 
 # BUTTON = np.ix_(np.arange(10, 190), np.arange(10, 190))
 
-def square_frame(image:np.ndarray, side:int):
-    """returns image resized to fit long side into square frame, with padding (return image is a square)"""
+def square_frame(image:np.ndarray, side:int, pad=True)-> np.ndarray:
+    """Returns image resized to fit long side into square frame.
+    If pad=True, returns with 0-padding on t&b|l&r (return image is a square)"""
     h, w  = image.shape[:2]
-    shape = (round(side * w / h), side) if h > w else (side, round(side * h / w))
-    square = cv.resize(image, shape)
-    if h > w: # portrait
-        cv.copyMakeBorder(square, 0, 0, (side - w) // 2, (side - w) // 2, cv.BORDER_CONSTANT, value=0) #[0] * image.shape[2])
-    else:
-        cv.copyMakeBorder(square, (side - h) // 2, (side - h) // 2, 0, 0, cv.BORDER_CONSTANT, value=0) 
+
+    size = (round(side * w / h), side) if h > w else (side, round(side * h / w))
+    square = cv.resize(image, size)
+    if pad:
+        if square.shape[0] > square.shape[1]: # roi @ portrait
+            square = cv.copyMakeBorder(square, 0, 0, (side - w) // 2, (side - w) // 2, cv.BORDER_CONSTANT, value=0) #[0] * image.shape[2])
+        else:
+            square = cv.copyMakeBorder(square, (side - h) // 2, (side - h) // 2, 0, 0, cv.BORDER_CONSTANT, value=0) 
     return square
 
+def integer_scaledown(image:np.ndarray, side_max=SIDE) -> tuple[np.ndarray,int]:
+    scale = 1
+    h, w = image.shape[:2]
+    while h / scale > side_max or w / scale > side_max:
+        scale += 1
+    shape = (round(w / scale), round(h / scale))
+    img = cv.resize(image, shape)
+    return (img, scale)
+
+######################################3
 
 def scaledown_fit_view(image:np.ndarray, side=SIDE) -> np.ndarray:
     h, w  = image.shape[:2]

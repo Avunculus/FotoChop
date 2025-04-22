@@ -1,74 +1,85 @@
 import os
 from display import *
 
-def pick_source() -> tuple[np.ndarray, str]:
+def slice_rect(image:np.ndarray, rect:tuple) -> np.ndarray:
+    x, y, w, h = rect
+    return image[y: y + h, x: x + w, :]
+
+def pick_source() -> str: #-> tuple[np.ndarray, str]:
+    """defines gloabal: SOURCE"""
     ###
     fn = 'uncle baby billy.jpg'
     ###
     name = 'sources/' + fn
     image = cv.imread(name)
-    match image.shape[2]: # check Color format, convert to 4 channel?
-        case 1: image = cv.cvtColor(image, cv.COLOR_GRAY2BGRA) # grayscale
-        case 3: image = cv.cvtColor(image, cv.COLOR_BGR2BGRA)  # 3-channel
+    match image.shape[2]:   # set color format to 3-CHANNEL
+        case 1: image = cv.cvtColor(image, cv.COLOR_GRAY2BGR)  # grayscale
+        case 4: image = cv.cvtColor(image, cv.COLOR_BGRA2BGR)  # 4-channel
     global SOURCE
     SOURCE = image.copy()
-    return (image, 'sources/' + fn.split('.')[0] + '/')
+    return 'sources/' + fn.split('.')[0] + '/'  # (image, 'sources/' + fn.split('.')[0] + '/')
 
 def get_roi(image:np.ndarray) -> tuple[int,int,int,int]:
-    scaled = scaledown_fit_view(image)
-    fx = scaled.shape[1] / image.shape[1]
-    fy = scaled.shape[0] / image.shape[0]
+    """integer scaledown image, scales ROI rect back up to original"""
+    # scaled = square_frame(image, SIDE, pad=False)
+    scaled, factor = integer_scaledown(image)
     roi = (0, 0, 0, 0)
-    while any([i == 0 for i in roi[2:]]):
-        roi = cv.selectROI('select ROI, then press spacebar', scaled)
+    # while any([i == 0 for i in roi[2:]]):
+    roi = cv.selectROI('select ROI, then press spacebar', scaled)
     cv.destroyWindow('select ROI, then press spacebar')
-    x, y, w, h = roi
-    roi = (round(x / fx), round(y / fy), round(w / fx), round(h / fy))
+    roi = tuple([i * factor for i in roi])
     return roi
 
-
 class Segmentor:
-    def __init__(self, source:np.ndarray):
-        self.source = source[:, :, :3] #cv.cvtColor(source, cv.COLOR_BGRA2BGR) # 3-channel for grabcut
+    def __init__(self):
         self.window = np.zeros((SIDE, 2 * SIDE + BAR, 3))
-
+        # draw sidebar ui
     def handle_mouse(self, event:int, x:int, y:int, flags:int, param):
         if event == cv.EVENT_LBUTTONDOWN:
             print(f'clicked \'SEGMENT\' window @ ({x}, {y})')
-            test = SOURCE
-
+    def get_source(self) -> np.ndarray:
+        return slice_rect(SOURCE, self.rect)
     def run(self):
-        # self.segment = np.zeros(self.source.shape[:2], dtype=np.uint8)
-        rect = get_roi(self.source)
-        x, y, w, h = rect
-        self.roi = self.source[y: y + h, x: x + w, :]
-        # draw window
-        self.window[0:SIDE, 0:BAR, :] = [255, 0, 128]
-        roi_view = scaledown_fit_view(self.roi)
-        cut_view = np.zeros_like(roi_view)
-        h, w = roi_view.shape[:2]
-        v_border = (SIDE - h) // 2
-        h_border = (SIDE - w) // 2
-        roi_rect = (BAR + h_border, v_border, w, h)
-        x, y, w, h = roi_rect
-        self.window[y: y + h, x: x + w, :] = roi_view
-        cut_rect = (SIDE + BAR + 3 * h_border, v_border, w, h)
-        x, y, w, h = cut_rect
-        self.window[y: y + h, x: x + w, :] = cut_view
+        self.rect = get_roi(SOURCE) # !! getting zero-dim error for w|h...
+        ... # check dims for 0-width|hgt? *** select_roi needs fixing. Thread issue.
+        self.source = self.get_source()
         cv.namedWindow('SEGMENTOR')
         cv.setMouseCallback('SEGMENTOR', self.handle_mouse)
         cv.imshow('SEGMENTOR', self.window)
 
+class ChopJob:
+    def __init__(self, segments: list[np.ndarray]):
+        self.window = np.zeros((SIDE, 2 * SIDE + BAR, 3))
+        # draw sidebar ui
+    def handle_mouse(self, event:int, x:int, y:int, flags:int, param):
+        if event == cv.EVENT_LBUTTONDOWN:
+            print(f'clicked \'CHOPJOB\' window @ ({x}, {y})')
+    def run(self):
+        ...
+        cv.namedWindow('CHOPJOB')
+        cv.setMouseCallback('CHOPJOB', self.handle_mouse)
+        cv.imshow('CHOPJOB', self.window)
 
 def mouse_main(event:int, x:int, y:int, flags:int, param):
     # source, win_main, img_pos = param
     if event == cv.EVENT_LBUTTONDOWN:
         button = check_click((x, y), {rect:val[0] for rect, val in BUTTONS['MAIN'].items()})
         if button == 'SEGMENTOR':
-            Segmentor(SOURCE).run()
+            Segmentor().run()
+        elif button == 'CHOPJOB':
+            ChopJob(SEGMENTS.copy()).run()
 
-def main(source:np.ndarray, path:str) -> bool:
-    win_main = draw_main_win(source)
+def main(path:str) -> bool:
+    win_main = draw_main_win(SOURCE)
+    global SEGMENTS
+    SEGMENTS = []
+    for seg in os.listdir(path):
+        bitmask = cv.imread(path + seg) // 255
+        SEGMENTS.append(bitmask, )
+    print(f'read {len(SEGMENTS)} segment masks from file.')
+    if len(SEGMENTS) > 9:
+        print(f'warning! too many segment masks ({len(SEGMENTS)}) loaded.')
+        SEGMENTS = SEGMENTS[:9]
     cv.namedWindow('MAIN')
     cv.setMouseCallback('MAIN', mouse_main)
     while True:
@@ -85,9 +96,9 @@ def main(source:np.ndarray, path:str) -> bool:
     return False
 
 if __name__ == '__main__':
-    source_image, path = pick_source()
-    repeat = main(source_image, path)
+    path = pick_source()
+    repeat = main(path)
     while repeat:
-        source_image, path = pick_source()
-        repeat = main(source_image, path)
+        path = pick_source()
+        repeat = main(path)
     print('Done.')
