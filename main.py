@@ -17,8 +17,21 @@ def pick_source() -> str: #-> tuple[np.ndarray, str]:
     SEGMENTS = []
     return 'sources/' + fn.split('.')[0] + '/'  # (image, 'sources/' + fn.split('.')[0] + '/')
 
+def draw_buttons(win:np.ndarray, win_name:str) -> np.ndarray:
+    for (x, y, w, h), (name, color) in BUTTONS[win_name].items():
+        ix = np.ix_(np.arange(y, y + h), np.arange(x, x + w))
+        win[ix] = color                                         # fill
+        cv.rectangle(win, (x, y), (x + w, y + h), COLORS[2], 6) # outline
+        cv.putText(win, name, (x + 6, y + h - 12), cv.FONT_HERSHEY_PLAIN, 1.5, 
+                   COLORS[1], 2)  # text
+    return win
+
 def draw_main_win() -> np.ndarray:
-    ...
+    win = square_frame(SOURCE, SIDE)
+    win = cv.copyMakeBorder(win, 0, 0, BAR, 0, cv.BORDER_CONSTANT, value=COLORS[0])
+    win = draw_buttons(win, 'MAIN')
+    for seg in SEGMENTS: seg.draw(win)
+    return win
     
 def render() -> np.ndarray:
     ...
@@ -27,26 +40,42 @@ def render() -> np.ndarray:
 class Segment:
     def __init__(self, mask:np.ndarray):
         self.mask = mask # =None is flag for not visible/interacable
-        self.render = True # whether to include it in the render
-        self.source = 10  # 1-9: color canvas COLORS[i]; 10: src (color); 11: src (b&w)
-        self.rect = (0, 0, 140, 60)
-        self.rects = {'trash' : (  5, 195, 25, 30),
-                      'render': ( 40, 195, 25, 30),
-                      'source': ( 75, 195, 25, 30),
-                      'up'    : (110, 190, 25, 20),
-                      'down'  : (110, 210, 25, 20)}
+        self.render = 1  # whether to include it in the render
+        self.source = 9  # 0-8: color canvas COLORS[i]; 9: src (color); 10: src (b&w)
     def delete(self):
         if self not in SEGMENTS: print(f'WARNING: attempt to remove unlisted segment')
         else: SEGMENTS.remove(self)
-    def update_position(self) -> None:
-        for rect in self.rects.values():
-            pos = SEGMENTS.index(self)
-            ... # move rect...
+    def draw(self, win:np.ndarray) -> None:
+        ix = SEGMENTS.index(self)
+        up = int(ix != 0)
+        down = int(ix + 1 < len(SEGMENTS))
+        x, y, w, h = SEG_RECT
+        y += ix * h
+        win[np.ix_(np.arange(y, y + h), np.arange(x, x + w))] = COLORS[0] # fill/erase
+        cv.rectangle(win, (x, y), (x + w, y + h), COLORS[2], 6)           # outline
+        for name, (rect, images) in SEG_BTNS.items():                     # buttons
+            x, y, w, h = rect
+            y += ix * PANEL_H
+            match name:
+                case 'trash':
+                    img = images[0]
+                case 'render':
+                    img = images[self.render]
+                case 'source':
+                    img = images[self.source]
+                case 'up':
+                    img = images[up]
+                case 'down':
+                    img = images[down]
+                case _: print('WARNING: unknown name from SEG_BTN')
+            if len(img.shape) == 2:
+                img = np.stack([img, img, img], axis=2)
+            win[y: y + h, x: x + w, :] = img
     def cycle_source(self, cycle_back=False) -> None:
         self.source += 1 if not cycle_back else -1
         self.source %= 11
     def toggle_render(self) -> None:
-        self.render = not self.render
+        self.render = abs(self.render - 1)
     def collide(self, pos:tuple[int,int]) -> bool:
         ... # collide check for whole rect: toggle highlighting
     def collide_rects(self, pos:tuple[int,int]) -> str|None:
@@ -64,8 +93,8 @@ def handle_mouse(event:int, x:int, y:int, flags:int, param):
 
 
 def main(path:str) -> bool:
-    for i, seg in enumerate(os.listdir(path)):
-        SEGMENTS.append(Segment(cv.imread(path + seg) // 255, i))
+    for seg in os.listdir(path):
+        SEGMENTS.append(Segment(cv.imread(path + seg) // 255), )
     # print(f'read {len(SEGMENTS)} segment masks from file.')
     cv.namedWindow('MAIN')
     cv.setMouseCallback('MAIN', handle_mouse)
@@ -114,14 +143,10 @@ if __name__ == '__main__':
 #             return True
 #         return False
 
-
-
 # def update_seg_order(segments:list[Segment]) -> None:
 #     for i, seg in enumerate(segments):
 #         seg.pos = i
 #         seg.rect = (0, 180 + seg.pos * 60, 140, 60)
-
-
 
 
 # def draw_main_win() -> np.ndarray:

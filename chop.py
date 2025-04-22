@@ -9,9 +9,9 @@ def square_frame(image:np.ndarray, side:int, pad=True)-> np.ndarray:
     h, w  = image.shape[:2]
     if pad and abs(h - w) > 1:
         if image.shape[0] > image.shape[1]: # roi = portrait
-            image = cv.copyMakeBorder(image, 0, 0, (side - w) // 2, (side - w) // 2, cv.BORDER_CONSTANT, value=0) #[0] * image.shape[2])
+            image = cv.copyMakeBorder(image, 0, 0, (side - w) // 2, (side - w) // 2, cv.BORDER_CONSTANT, value=COLORS[2]) #[0] * image.shape[2])
         else:
-            image = cv.copyMakeBorder(image, (side - h) // 2, (side - h) // 2, 0, 0, cv.BORDER_CONSTANT, value=0) 
+            image = cv.copyMakeBorder(image, (side - h) // 2, (side - h) // 2, 0, 0, cv.BORDER_CONSTANT, value=COLORS[2]) 
     return image
 
 def integer_scaledown(image:np.ndarray, side_max=SIDE) -> tuple[np.ndarray,int]:
