@@ -53,6 +53,7 @@ for i in range(1, 9):
     SEG_MAP[i] = {} 
     for name, (x, y, w, h) in SEG_MAP[0].items():
         SEG_MAP[i][name] = (x, y + SEG_H * i, w, h)
+        
 ###################################################################################################
 ###################################################################################################
 
@@ -63,16 +64,3 @@ for i in range(1, 9):
 #           'down': cv.imread('assets/down.png'),         # 25 x 20
 #           'src color': cv.imread('assets/image.png'),
 #           'src gray': cv.imread('assets/image.png', cv.IMREAD_GRAYSCALE)}
-
-
-# SEG_PANEL = {0: {'trash' : (  5, 195, 25, 30),
-#                  'render': ( 40, 195, 25, 30),
-#                  'source': ( 75, 195, 25, 30),
-#                  'up'    : (110, 190, 25, 20),
-#                  'down'  : (110, 210, 25, 20)}}
-# for i in range(1, 9):
-#     SEG_PANEL[i] = {} 
-#     for btn, (x, y, w, h) in SEG_PANEL[0].items():
-#         SEG_PANEL[i][btn] = (x, y + PANEL_H * i, w, h)
-
-
