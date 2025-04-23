@@ -11,7 +11,11 @@ def square_frame(image:np.ndarray, side:int, pad=True)-> np.ndarray:
         if image.shape[0] > image.shape[1]: # roi = portrait
             image = cv.copyMakeBorder(image, 0, 0, (side - w) // 2, (side - w) // 2, cv.BORDER_CONSTANT, value=COLORS[2]) #[0] * image.shape[2])
         else:
-            image = cv.copyMakeBorder(image, (side - h) // 2, (side - h) // 2, 0, 0, cv.BORDER_CONSTANT, value=COLORS[2]) 
+            image = cv.copyMakeBorder(image, (side - h) // 2, (side - h) // 2, 0, 0, cv.BORDER_CONSTANT, value=COLORS[2])
+        # handle 1-px margin of error in //
+        dx, dy = (abs(image.shape[1] - side), abs(image.shape[0] - side))
+        if any([dx, dy]):
+            image = cv.copyMakeBorder(image, dy, 0, dx, 0, cv.BORDER_CONSTANT, value=COLORS[2])
     return image
 
 def integer_scaledown(image:np.ndarray, side_max=SIDE) -> tuple[np.ndarray,int]:
@@ -29,7 +33,7 @@ def slice_rect(image:np.ndarray, rect:tuple) -> np.ndarray:
 
 def collision(rect:tuple[int,int,int,int], pos:tuple[int,int]) -> bool:
     x, y, w, h = rect
-    if pos[0] in range(x, x + w) and pos[1] in (y, y + h):
+    if pos[0] in range(x, x + w) and pos[1] in range(y, y + h):
         return True
     return False
 
@@ -46,16 +50,52 @@ def get_roi(image:np.ndarray) -> tuple[int,int,int,int]:
 
 class Chopper:
     def __init__(self, source:np.ndarray):
-        self.source_full = source
-        self.rect = get_roi(source)
-        self.source = slice_rect(self.source, self.rect) # roi slice
-        self.view = square_frame(self.source, SIDE, False)
-        ...
+        self.src_full = source
+        self.src_scaled = square_frame(self.src_full, SIDE, False)# SIDE->GC_SIDE?Biggercanvas
+        # get ROI
+        h, w = self.src_scaled.shape[:2]
+        roi = (0, 0, 0, 0)
+        roi = cv.selectROI('select ROI, then press spacebar', self.src_scaled)
+        if not all(roi[2:]): roi = (0, 0, w, h)
+        cv.destroyWindow('select ROI, then press spacebar')
+        # first cut: init with rect
+        self.gc_mask = np.zeros((h, w))
+        self.bgm = np.zeros((1, 65), np.float64)    # background model: init from full img on first cut
+        self.fgm = np.zeros((1, 65), np.float64)    # foreground model: init from full img on first cut
+        self.gc_mask, self.bgm, self.fgm = \
+            cv.grabCut(self.src_scaled, self.gc_mask, roi, self.bgm, self.fgm, 1, cv.GC_INIT_WITH_RECT)
+        self.bitmask = np.where((self.gc_mask==2)|(self.gc_mask==0), 0, 1).astype('uint8')
+        self.preview = self.src_scaled * self.bitmask[:, :, np.newaxis]
+        cv.namedWindow('PREVIEW')
+        cv.imshow('PREVIEW', self.preview)
+        
+
     def draw_win(self) -> np.ndarray:
+        win = square_frame(self.src_scaled, SIDE)
+        win = cv.copyMakeBorder(win, 0, 0, BAR, 0, cv.BORDER_CONSTANT, value=COLORS[0])
+        # cv.namedWindow('TEST'); cv.imshow('TEST', win)
+        return win
+
+    
+    def handle_mouse(self, event:int, x:int, y:int, flags:int, param):
         ...
+
+    def cut(self) -> None:
+        ...
+    def undo_cut(self) -> None:
+        ...
+    def draw(self) -> None:
+        ...
+    def undo_draw(self) -> None:
+        ...
+
     def run(self) -> np.ndarray|None:
-        win = self.draw_win()
-        ...
+        cv.namedWindow('CHOPPER')
+        cv.setMouseCallback('CHOPPER', self.handle_mouse)
+        self.win = self.draw_win()
+        cv.imshow('CHOPPER', self.win)
+
+
 
 
 ###################################################################################################

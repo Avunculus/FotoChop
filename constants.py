@@ -3,7 +3,7 @@ import numpy as np
 
 SIDE = 720
 BAR = 140
-PANEL_H = 60
+SEG_H = 60
 
 COLORS = [[  0,   0,   0],
           [255, 255, 255],
@@ -48,6 +48,11 @@ SEG_BTNS = {
 # range:  1 [2  11 2  2]
 #   def:  0 [0, 9, 0, 0]
 
+SEG_MAP = {0: {name: rect for name, (rect, _) in SEG_BTNS.items()}}
+for i in range(1, 9):
+    SEG_MAP[i] = {} 
+    for name, (x, y, w, h) in SEG_MAP[0].items():
+        SEG_MAP[i][name] = (x, y + SEG_H * i, w, h)
 ###################################################################################################
 ###################################################################################################
 
