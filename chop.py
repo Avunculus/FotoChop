@@ -1,7 +1,7 @@
 from constants import *
 
-def square_frame(image:np.ndarray, side:int, pad=True)-> np.ndarray:
-    """Returns image resized to fit long side into square frame.
+def square_frame(image:np.ndarray, side:int, pad=True)-> tuple[np.ndarray, tuple]:
+    """Returns image resized to fit long side into square frame, scaled image size as (w, h)
     If pad=True, returns with 0-padding on t&b|l&r (return image is a square)"""
     h, w  = image.shape[:2]
     size = (round(side * w / h), side) if h > w else (side, round(side * h / w))
@@ -16,7 +16,7 @@ def square_frame(image:np.ndarray, side:int, pad=True)-> np.ndarray:
         dx, dy = (abs(image.shape[1] - side), abs(image.shape[0] - side))
         if any([dx, dy]):
             image = cv.copyMakeBorder(image, dy, 0, dx, 0, cv.BORDER_CONSTANT, value=COLORS[2])
-    return image
+    return (image, size)
 
 def integer_scaledown(image:np.ndarray, side_max=SIDE) -> tuple[np.ndarray,int]:
     scale = 1
@@ -51,7 +51,7 @@ def get_roi(image:np.ndarray) -> tuple[int,int,int,int]:
 class Chopper:
     def __init__(self, source:np.ndarray):
         self.src_full = source
-        self.src_scaled = square_frame(self.src_full, SIDE, False)# SIDE->GC_SIDE?Biggercanvas
+        self.src_scaled, size = square_frame(self.src_full, SIDE, False)# SIDE->GC_SIDE?Biggercanvas
         # get ROI
         h, w = self.src_scaled.shape[:2]
         roi = (0, 0, 0, 0)
@@ -71,7 +71,7 @@ class Chopper:
         
 
     def draw_win(self) -> np.ndarray:
-        win = square_frame(self.src_scaled, SIDE)
+        win, size = square_frame(self.src_scaled, SIDE)
         win = cv.copyMakeBorder(win, 0, 0, BAR, 0, cv.BORDER_CONSTANT, value=COLORS[0])
         # cv.namedWindow('TEST'); cv.imshow('TEST', win)
         return win

@@ -2,8 +2,6 @@ import os
 from chop import *
 
 def pick_source() -> str: #-> tuple[np.ndarray, str]:
-    """defines gloabal: SOURCE"""
-    ###
     fn = 'uncle baby billy.jpg'
     ###
     name = 'sources/' + fn
@@ -13,10 +11,11 @@ def pick_source() -> str: #-> tuple[np.ndarray, str]:
         case 4: image = cv.cvtColor(image, cv.COLOR_BGRA2BGR)  # 4-channel
     global SOURCE
     SOURCE = image.copy()
+    global PORTRAIT
+    PORTRAIT = image.shape[0] > image.shape[1]
     global SEGMENTS
     SEGMENTS = []
     return 'sources/' + fn.split('.')[0] + '/'  # (image, 'sources/' + fn.split('.')[0] + '/')
-
 
 def draw_buttons(win:np.ndarray, win_name:str) -> np.ndarray:
     for (x, y, w, h), (name, color) in BUTTONS[win_name].items():
@@ -27,8 +26,10 @@ def draw_buttons(win:np.ndarray, win_name:str) -> np.ndarray:
                    COLORS[1], 2)  # text
     return win
 
-def draw_main_win() -> np.ndarray:
-    win = square_frame(SOURCE, SIDE)
+def get_main_win() -> np.ndarray:
+    global SIZE
+    win, SIZE = square_frame(SOURCE, SIDE)
+
     win = cv.copyMakeBorder(win, 0, 0, BAR, 0, cv.BORDER_CONSTANT, value=COLORS[0])
     win = draw_buttons(win, 'MAIN')
     for seg in SEGMENTS: seg.draw(win)
@@ -36,7 +37,6 @@ def draw_main_win() -> np.ndarray:
     
 def render() -> np.ndarray:
     ...
-
 
 class Segment:
     def __init__(self, mask:np.ndarray):
@@ -47,9 +47,6 @@ class Segment:
     def delete(self):
         if self not in SEGMENTS: print(f'WARNING: attempt to remove unlisted segment')
         else: SEGMENTS.remove(self)
-        # WIN[180:, :BAR, :] *= 0  # fill BAr w/black
-        # for seg in SEGMENTS:
-        #     seg.draw(WIN)
     def draw(self, win:np.ndarray) -> None:
         ix = SEGMENTS.index(self)
         up = int(ix != 0)
@@ -87,10 +84,19 @@ class Segment:
         ...
 
 def set_highlight(segment:Segment):
-    ... # set alpha=128 for src_view
-    # set alpha=255 where nonzero segment.mask
-    for seg in SEGMENTS:
-        seg.highlight = False if seg != segment else True
+    frame, _ = square_frame(SOURCE, SIDE)
+    gs_frame = cv.cvtColor(frame.copy(), cv.COLOR_BGR2GRAY)
+    gs_frame = np.stack([gs_frame, gs_frame, gs_frame], axis=2)
+    mask, _ = square_frame(segment.mask, SIDE)
+    gs_frame[np.nonzero(mask)] = frame[np.nonzero(mask)]
+    WIN[:, BAR:, :] = gs_frame
+    for seg in SEGMENTS: seg.highlight = False
+    segment.highlight = True
+
+def remove_highlight():
+    frame, _ = square_frame(SOURCE, SIDE)
+    WIN[:, BAR:, :] = frame
+    for seg in SEGMENTS: seg.highlight = False
 
 def draw_segments():
     WIN[180:, :BAR, :] *= 0
@@ -99,14 +105,14 @@ def draw_segments():
 
 def handle_mouse(event:int, x:int, y:int, flags:int, param):
     if event == cv.EVENT_MOUSEMOVE:
-        if x < BAR and y > 180:         # mouse in seg area
-            seg_ix = (y - 180) % SEG_H
-            if seg_ix < len(SEGMENTS):  # mouse in seg
+        if x < BAR and y > 180:             # mouse in seg area
+            seg_ix = (y - 180) // SEG_H
+            if seg_ix < len(SEGMENTS):      # mouse in seg
                 if not SEGMENTS[seg_ix].highlight:
                     set_highlight(SEGMENTS[seg_ix])
-        elif any([seg.highlight for seg in SEGMENTS]):   # mouse exiting seg area
-            # set alpha=255 for src_view
-            for seg in SEGMENTS: seg.highlight = False
+        elif any([seg.highlight for seg in SEGMENTS]):  # mouse exiting seg area
+            remove_highlight()                          # set src_view -> gray
+            
     elif event == cv.EVENT_LBUTTONDOWN:
         for ix, map in SEG_MAP.items():
             for name, rect in map.items():
@@ -136,7 +142,7 @@ def main(path:str) -> bool:
     cv.namedWindow('MAIN')
     cv.setMouseCallback('MAIN', handle_mouse)
     global WIN
-    WIN = draw_main_win()
+    WIN = get_main_win()
     while True:
         cv.imshow('MAIN', WIN)
         key = cv.waitKey(1)
