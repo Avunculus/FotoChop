@@ -2,6 +2,13 @@ from constants import *
 PX_MAX  = 1000 * 1000
 SIDE_CH = 1000
 BAR_CH  = 240
+BUF = 24
+BTN_HEIGHT = 98
+BUTTON_CH: dict[str,tuple[tuple,list]] = {}
+for i, name in enumerate(['chop it!', 'undo cut', 'undo draw', 'finalize']):
+    BUTTON_CH[name] = ((BUF, BUF + i * (BUF + BTN_HEIGHT), BAR_CH - (2 * BUF), BTN_HEIGHT), COLORS[i + 3])
+
+
 BRUSHES = {0: {'view': COLORS[0], 'mask': cv.GC_BGD},       # background
            1: {'view': COLORS[1], 'mask': cv.GC_FGD}}       # foreground
 
@@ -67,17 +74,35 @@ def scale_max_pixels(source:np.ndarray, px_max) -> np.ndarray:
     print(f'resized from:\n{source.shape[:2]} [{source.shape[0] / source.shape[1]}] \nto: \n({h}, {w}) [{h / w}]')
     return cv.resize(source, (w, h))
 
+def resize_rect(rect:tuple[int,int,int,int], image_src:np.ndarray,
+                image_dest:np.ndarray) -> tuple[int,int,int,int]:
+        fx = image_dest.shape[1] / image_src.shape[1]
+        fy = image_dest.shape[0] / image_src.shape[0]
+        x, y, w, h = rect
+        return (round(n) for n in [x * fx, y * fy, w * fx, h * fy])
+
+def draw_ch_buttons(win:np.ndarray) -> np.ndarray:
+    for name, (rect, color) in BUTTON_CH.items():
+        x, y, w, h = rect
+        ix = np.ix_(np.arange(y, y + h), np.arange(x, x + w))
+        win[ix] = color
+        cv.rectangle(win, (x, y), (x + w, y + h), COLORS[2], 3)
+        cv.putText(win, name, (x + 2, y + BTN_HEIGHT // 2),
+                   cv.FONT_HERSHEY_COMPLEX, 1., COLORS[1], 2)
+    return win
 
 class Chopper:
     def __init__(self, source:np.ndarray):
         self.source = source
         win, size = square_frame(source, SIDE_CH)
         self.win  = cv.copyMakeBorder(win, 0, 0, BAR_CH, 0,
-                                      cv.BORDER_CONSTANT, value=COLORS[3])
+                                      cv.BORDER_CONSTANT, value=COLORS[7])
+        self.win = draw_ch_buttons(self.win)
         w, h = size
         point = (BAR_CH + h - w, 0) if h > w else (BAR_CH, w - h) # (w, h)
         self.src_view  = cv.resize(self.source, size)
         self.view_rect = (point[0], point[1], w, h)
+        self.view_pre_draw = self.src_view.copy()
         self.gc_source = scale_max_pixels(source, PX_MAX)
         h, w = self.gc_source.shape[:2]
         self.gc_mask = np.zeros((h, w))
@@ -85,11 +110,15 @@ class Chopper:
         self.fgm = np.zeros((1, 65), np.float64)    # foreground model
         self.drawing   = -1       # 0=drawing BGD(?) (black), 1=FGD (white)
         self.draw_rad  = 3
-        self.finishing = False  # flag indicating cut has been finalized -> erode/dilate state
+        self.mask_final = None  # flag indicating cut has been finalized -> erode/dilate state
+
     def show_preview(self):
         bitmask = np.where((self.gc_mask==2)|(self.gc_mask==0), 0, 1).astype('uint8')
         preview = self.gc_source * bitmask[:, :, np.newaxis]
         preview = cv.resize(preview, (self.src_view.shape[1], self.src_view.shape[0]))
+        rect = resize_rect(self.roi, self.gc_source, self.src_view)
+        # crop out ROI: scale from gc_src -> src_view
+        preview, _ = square_frame(slice_rect(preview, rect), SIDE, False)
         cv.imshow('PREVIEW', preview)
     def cut(self) -> None:
         self.mask_prev = self.gc_mask.copy()
@@ -105,6 +134,7 @@ class Chopper:
     def refresh_view(self) -> None:
         x, y = self.view_rect[:2]
         self.win[y: y + SIDE_CH, x: x + SIDE_CH, :] = self.src_view.copy()
+        
 
     def draw(self, point:tuple[int,int]) -> None:
         # draw to win, draw to gc mask -> needs scale from src_view to gc_rez
@@ -113,37 +143,67 @@ class Chopper:
         y += self.view_rect[1]
         cv.circle(self.win, (x, y), self.draw_rad, BRUSHES[self.drawing]['view'], -1)
         ratio = self.gc_mask.shape[0] / self.src_view.shape[0]  # arbitrary x|y
-        # ratio = max(ratio, 1 / ratio) # need???
+        # ratio = max(ratio, 1 / ratio) # need??? (use resize_rect()?)
         x, y, rad = tuple([round(n * ratio) for n in [x, y, self.draw_rad]])
         cv.circle(self.gc_mask, (x , y), rad, BRUSHES[self.drawing]['mask'], -1)
 
     def undo_draw(self) -> None:
-        ...
+        self.gc_mask = self.mask_pre_draw.copy()
+        x, y = self.view_rect[:2]
+        self.win[y: y + SIDE_CH, x: x + SIDE_CH, :] = self.view_pre_draw
 
     def handle_mouse(self, event:int, x:int, y:int, flags:int, param):
-            ...
-        # if event in [cv.EVENT_LBUTTONDOWN, cv.EVENT_RBUTTONDOWN] \
-        #     and collision(self.view_rect, (x, y)):
-        #     self.drawing = int(event == cv.EVENT_LBUTTONDOWN)
-        #     self.draw(x, y) 
+            if collision(self.view_rect, (x, y)): # mouse in src_view
+                if event == cv.EVENT_LBUTTONDOWN|cv.EVENT_RBUTTONDOWN:
+                    self.mask_pre_draw = self.gc_mask.copy()
+                    x, y = self.view_rect[:2]
+                    self.view_pre_draw = self.win[y: y + SIDE_CH, x: x + SIDE_CH, :].copy()
+                    self.drawing = int(event==cv.EVENT_LBUTTONDOWN)
+                    self.draw((x, y))
+                elif event == cv.EVENT_MOUSEMOVE and self.drawing >= 0:
+                    self.draw((x, y))
+                elif event == cv.EVENT_LBUTTONUP|cv.EVENT_RBUTTONUP:
+                    self.drawing = -1
+            else:
+                if event == cv.EVENT_MOUSEMOVE:
+                    self.drawing = -1
+                elif event == cv.EVENT_LBUTTONDOWN: # check buttons
+                    for name, (rect, _) in BUTTON_CH.items():
+                        if collision(rect, (x, y)):
+                            match name:
+                                case 'chop it!' : self.cut()
+                                case 'undo cut' : self.undo_cut()
+                                case 'undo draw': self.undo_draw()
+                                case 'finalize' :
+                                    cv.destroyWindow('PREVIEW')
+                                    cv.destroyWindow('CHOPPER')
+                                    bitmask = np.where((self.gc_mask==2)|(self.gc_mask==0), 0, 1).astype('uint8')
+                                    self.mask_final = Finisher(bitmask).run()
+                                    # return self.mask_final
+                                    
 
-            ... # mousedown -> save copy of mask for undo draw
 
     def run(self) -> np.ndarray|None:
         # get ROI: scaled to grabcut rez
         h, w = self.gc_source.shape[:2]
-        roi = (0, 0, 0, 0)
-        roi = cv.selectROI('select ROI, then press spacebar', self.gc_source)
-        if not all(roi[2:]): roi = (1, 1, w - 1, h - 1)
+        self.roi = (0, 0, 0, 0)
+        self.roi = cv.selectROI('select ROI, then press spacebar', self.gc_source)
+        if not all(self.roi[2:]): self.roi = (1, 1, w - 1, h - 1)
         cv.destroyWindow('select ROI, then press spacebar')
         # first cut: init with rect
         self.gc_mask, self.bgm, self.fgm = \
-            cv.grabCut(self.gc_source, self.gc_mask, roi, self.bgm, self.fgm, 1, cv.GC_INIT_WITH_RECT)
+            cv.grabCut(self.gc_source, self.gc_mask, self.roi, 
+                       self.bgm, self.fgm, 1, cv.GC_INIT_WITH_RECT)
+        self.mask_pre_draw = self.gc_mask.copy()
         cv.namedWindow('CHOPPER')
         cv.setMouseCallback('CHOPPER', self.handle_mouse)
         cv.imshow('CHOPPER', self.win)
         cv.namedWindow('PREVIEW')
         self.show_preview()
+        # while self.mask_final == None:
+        #     ...
+        # return self.mask_final
+
 
 
 
@@ -156,16 +216,3 @@ class Finisher:
         ...
     def run(self) -> np.ndarray:
         return self.mask
-
-###################################################################################################
-###################################################################################################
-
-#     def _handle_mouse(self, event, x, y, flags, *args):
-#         if event in [cv.EVENT_LBUTTONDOWN, cv.EVENT_RBUTTONDOWN]:
-#             self.drawing = int(event == cv.EVENT_LBUTTONDOWN)
-#             self._draw(x, y) 
-#         elif event == cv.EVENT_MOUSEMOVE and self.drawing >= 0:
-#             self._draw(x, y)
-#         elif event in [cv.EVENT_LBUTTONUP, cv.EVENT_RBUTTONUP]:
-#             self.drawing = -1
-#

@@ -18,14 +18,14 @@ COLORS = [[  0,   0,   0],
 BUTTONS = {
     'MAIN'    : {( 20,  10, 100,  50): ('SEGMENT', COLORS[3]),
                  ( 20,  80, 100,  50): ('RENDER' , COLORS[4])},
-    'CHOPPER' : {( 32,  32,  64,  64): ('CHOP IT', COLORS[-2]),
-                 ( 32,  32,  64,  64): ('UNDO'   , COLORS[-2]),
-                 ( 32,  32,  64,  64): ('CLEAR'  , COLORS[-2]),
-                 ( 32,  32,  64,  64): ('ACCEPT' , COLORS[-2])},
-    'FINISHER': {( 32,  32,  64,  64): ('ERODE'  , COLORS[-2]),
-                 ( 32,  32,  64,  64): ('DILATE' , COLORS[-2]),
-                 ( 32,  32,  64,  64): ('APPLY'  , COLORS[-2]),
-                 ( 32,  32,  64,  64): ('FINISH' , COLORS[-2])}
+    # 'CHOPPER' : {( 32,  32,  64,  64): ('CHOP IT', COLORS[-2]),
+    #              ( 32,  32,  64,  64): ('UNDO'   , COLORS[-2]),
+    #              ( 32,  32,  64,  64): ('CLEAR'  , COLORS[-2]),
+    #              ( 32,  32,  64,  64): ('ACCEPT' , COLORS[-2])},
+    # 'FINISHER': {( 32,  32,  64,  64): ('ERODE'  , COLORS[-2]),
+    #              ( 32,  32,  64,  64): ('DILATE' , COLORS[-2]),
+    #              ( 32,  32,  64,  64): ('APPLY'  , COLORS[-2]),
+    #              ( 32,  32,  64,  64): ('FINISH' , COLORS[-2])}
     }
 
 SEG_RECT = (0, 180, 140, 60)
