@@ -4,6 +4,7 @@ import numpy as np
 SIDE = 720
 BAR = 140
 SEG_H = 60
+CORNER_H = SIDE - (10 * SEG_H)
 
 COLORS = [[  0,   0,   0],
           [255, 255, 255],
@@ -16,8 +17,9 @@ COLORS = [[  0,   0,   0],
           [191,  28,  98]]
 
 BUTTONS = {
-    'MAIN'    : {( 20,  10, 100,  50): ('SEGMENT', COLORS[3]),
-                 ( 20,  80, 100,  50): ('CHOP OK' , COLORS[4])},
+    'MAIN'    : {(  8,   8, 100,  30): ('SEGMENT'  , COLORS[3]),
+                 (  8,  46, 100,  30): ('TAKE MASK', COLORS[4]),
+                 (  8,  84, 100,  30): ('FINALIZE' , COLORS[5])},
     # 'CHOPPER' : {( 32,  32,  64,  64): ('CHOP IT', COLORS[-2]),
     #              ( 32,  32,  64,  64): ('UNDO'   , COLORS[-2]),
     #              ( 32,  32,  64,  64): ('CLEAR'  , COLORS[-2]),
@@ -28,22 +30,22 @@ BUTTONS = {
     #              ( 32,  32,  64,  64): ('FINISH' , COLORS[-2])}
     }
 
-SEG_RECT = (0, 180, 140, 60)
+SEG_RECT = (0, 120, 140, 60)
 SEG_BTNS = {
-    'trash' : ((  5, 195, 25, 30), [cv.imread('assets/trash.png')]),
-    'render': (( 40, 195, 25, 30), [cv.imread('assets/off.png'), 
+    'trash' : ((  5, 135, 25, 30), [cv.imread('assets/trash.png')]),
+    'render': (( 40, 135, 25, 30), [cv.imread('assets/off.png'), 
                                     cv.imread('assets/on.png')]),
-    'source': (( 75, 195, 25, 30), [np.ones((30, 25, 3)) * c for c in COLORS] +\
+    'source': (( 75, 135, 25, 30), [np.ones((30, 25, 3)) * c for c in COLORS] +\
                                    [cv.imread('assets/image.png'),
                                     cv.imread('assets/image.png', cv.IMREAD_GRAYSCALE)]),
-    'up'    : ((110, 190, 25, 20), [cv.imread('assets/up.png', cv.IMREAD_GRAYSCALE),
+    'up'    : ((110, 130, 25, 20), [cv.imread('assets/up.png', cv.IMREAD_GRAYSCALE),
                                     cv.imread('assets/up.png')]),
-    'down'  : ((110, 210, 25, 20), [cv.imread('assets/down.png', cv.IMREAD_GRAYSCALE),
+    'down'  : ((110, 150, 25, 20), [cv.imread('assets/down.png', cv.IMREAD_GRAYSCALE),
                                     cv.imread('assets/down.png')])
     }
 
 SEG_MAP = {0: {name: rect for name, (rect, _) in SEG_BTNS.items()}}
-for i in range(1, 9):
+for i in range(1, 10):
     SEG_MAP[i] = {} 
     for name, (x, y, w, h) in SEG_MAP[0].items():
         SEG_MAP[i][name] = (x, y + SEG_H * i, w, h)

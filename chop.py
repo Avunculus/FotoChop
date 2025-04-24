@@ -157,14 +157,10 @@ class Chopper:
                         case 'undo cut' : self.undo_cut()
                         case 'undo draw': self.undo_draw()
                         case 'finalize' :
+                            self.mask_final = np.where((self.gc_mask==2)|(self.gc_mask==0), 0, 1).astype('uint8')
                             cv.destroyWindow('PREVIEW')
                             cv.destroyWindow('SOURCE')
                             cv.destroyWindow('CHOPPER')
-                            bitmask = np.where((self.gc_mask==2)|(self.gc_mask==0), 0, 1).astype('uint8')
-                            self.mask_final = Finisher(bitmask).run()
-                            ...
-                            # return self.mask_final
-
 
 
     def run(self) -> np.ndarray|None:
@@ -189,14 +185,27 @@ class Chopper:
 
 
 
-
+K_SHAPE = [cv.MORPH_ERODE,
+           cv.MORPH_DILATE,
+           cv.MORPH_RECT,
+           cv.MORPH_ELLIPSE]
 
 class Finisher:
     def __init__(self, mask:np.ndarray):
-        self.mask = mask # copy?
+        self.mask = mask
+        self.view = mask * 255
+        cv.namedWindow('PARAMS', flags=cv.WINDOW_GUI_EXPANDED)
+        cv.createTrackbar('K SIZE', 'PARAMS', 0, 12, self.morph)
+        cv.createTrackbar('K SHAPE', 'PARAMS', 0, 3, self.morph)
+        
+    def morph(self, arg):
+        ix = cv.getTrackbarPos('K SHAPE', 'PARAMS')
+        print(f'{arg==ix=}')
+        print(f'kernel size = {cv.getTrackbarPos('K SIZE', 'PARAMS')} || kernel shape = {K_SHAPE[ix]}')
     def erode(self):
         ...
     def dilate(self):
         ...
     def run(self) -> np.ndarray:
-        return self.mask
+        cv.imshow('FINALIZE', self.view)
+        cv.imshow('PARAMS', self.view)

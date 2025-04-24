@@ -1,6 +1,6 @@
 import os
 from chop import *
-from threading import Thread
+from system import *
 
 def pick_source() -> str: #-> tuple[np.ndarray, str]:
     fn = 'uncle baby billy.jpg'
@@ -14,17 +14,19 @@ def pick_source() -> str: #-> tuple[np.ndarray, str]:
     SOURCE = image.copy()
     global PORTRAIT
     PORTRAIT = image.shape[0] > image.shape[1]
+    global BACKGROUND
+    BACKGROUND = BackGround(np.ones(image.shape[:2]))
     global SEGMENTS
-    SEGMENTS = []
+    SEGMENTS = [BACKGROUND, ]
     return 'sources/' + fn.split('.')[0] + '/'  # (image, 'sources/' + fn.split('.')[0] + '/')
 
 def draw_buttons(win:np.ndarray, win_name:str) -> np.ndarray:
     for (x, y, w, h), (name, color) in BUTTONS[win_name].items():
         ix = np.ix_(np.arange(y, y + h), np.arange(x, x + w))
         win[ix] = color                                         # fill
-        cv.rectangle(win, (x, y), (x + w, y + h), COLORS[2], 6) # outline
-        cv.putText(win, name, (x + 6, y + h - 12), cv.FONT_HERSHEY_PLAIN, 1.5, 
-                   COLORS[1], 2)  # text
+        cv.rectangle(win, (x, y), (x + w, y + h), COLORS[2], 3) # outline
+        cv.putText(win, name, (x + 6, y + h - 12),
+                   cv.FONT_HERSHEY_PLAIN, 1., COLORS[1], 2)  # text
     return win
 
 def get_window() -> np.ndarray:
@@ -60,13 +62,16 @@ class Segment:
         else: SEGMENTS.remove(self)
     def draw(self, win:np.ndarray) -> None:
         ix = SEGMENTS.index(self)
-        up = int(ix != 0)
+        up = int(ix > 1)  # BG always ix0
         down = int(ix + 1 < len(SEGMENTS))
         x, y, w, h = SEG_RECT
         y += ix * h
-        win[np.ix_(np.arange(y, y + h), np.arange(x, x + w))] = COLORS[0] # fill/erase
-        cv.rectangle(win, (x, y), (x + w, y + h), COLORS[2], 6)           # outline
-        for name, (rect, images) in SEG_BTNS.items():                     # buttons
+        # win[np.ix_(np.arange(y, y + h), np.arange(x, x + w))] = COLORS[0] # fill/erase
+        cv.rectangle(win, (x, y), (x + w, y + h), COLORS[7], 3)           # outline
+        # # SEG_MAP method:
+        # for name, rect in SEG_MAP[ix].items():
+        # direct method:
+        for name, (rect, images) in SEG_BTNS.items():                     # segs
             x, y, w, h = rect
             y += ix * SEG_H
             match name:
@@ -91,7 +96,7 @@ class Segment:
         self.render = abs(self.render - 1)
     def move_up(self):
         ix = SEGMENTS.index(self)
-        if ix > 0:
+        if ix > 1:
             SEGMENTS.remove(self)
             SEGMENTS.insert(ix - 1, self)
     def move_down(self):
@@ -99,6 +104,28 @@ class Segment:
         if ix < len(SEGMENTS) - 1:
             SEGMENTS.remove(self)
             SEGMENTS.insert(ix + 1, self)
+
+class BackGround(Segment):
+    def __init__(self, mask):
+        super().__init__(mask)
+    def delete(self):
+        pass
+    def draw(self, win:np.ndarray) -> None:
+        # win[np.ix_(np.arange(y, y + h), np.arange(x, x + w))] = COLORS[0] # fill/erase
+        # cv.rectangle(win, (x, y), (x + w, y + h), COLORS[7], 3)           # outline
+        for name, (rect, images) in SEG_BTNS.items():   # seg buttons
+            x, y, w, h = rect
+            if name == 'render':
+                win[y: y + h, x: x + w, :] = images[self.render]
+            elif name == 'source':
+                img = images[self.source] 
+                if img.ndim == 2: img = np.stack([img, img, img], axis=2)
+                win[y: y + h, x: x + w, :] = img
+    def move_down(self):
+        pass
+    def move_up(self):
+        pass
+
 
 def set_highlight(segment:Segment):
     frame, _ = square_frame(SOURCE, SIDE)
@@ -116,15 +143,15 @@ def remove_highlight():
     for seg in SEGMENTS: seg.highlight = False
 
 def draw_segments():
-    WIN[180:, :BAR, :] *= 0
+    WIN[120:, :BAR, :] *= 0
     for seg in SEGMENTS:
         seg.draw(WIN)
 
 def handle_mouse(event:int, x:int, y:int, flags:int, param):
     if event == cv.EVENT_MOUSEMOVE:
-        if x < BAR and y > 180:             # mouse in seg area
-            seg_ix = (y - 180) // SEG_H
-            if seg_ix < len(SEGMENTS):      # mouse in seg
+        if x < BAR and y > 120:             # mouse in seg area
+            seg_ix = (y - 120) // SEG_H
+            if seg_ix < len(SEGMENTS) and seg_ix != 0:      # mouse in seg
                 if not SEGMENTS[seg_ix].highlight:
                     set_highlight(SEGMENTS[seg_ix])
         elif any([seg.highlight for seg in SEGMENTS]):  # mouse exiting seg area
@@ -141,28 +168,30 @@ def handle_mouse(event:int, x:int, y:int, flags:int, param):
                         case 'down':   SEGMENTS[ix].move_down()
                     draw_segments()
         for rect, (name, _) in BUTTONS['MAIN'].items():
-            if collision(rect, (x, y)): 
-                if name == 'SEGMENT' and len(SEGMENTS) < 9:
-                    global CHOPPER
-                    CHOPPER = Chopper(SOURCE)
-                    CHOPPER.run()
-                elif name == 'CHOP OK':
-                    print(f'{CHOPPER.mask_final=}')
-                    if CHOPPER.mask_final is not None and len(SEGMENTS) < 9:
-                        SEGMENTS.append(Segment(CHOPPER.mask_final.copy()))
+            if collision(rect, (x, y)):
+                match name:
+                    case 'SEGMENT':
+                        if len(SEGMENTS) < 10:
+                            global CHOPPER
+                            CHOPPER = Chopper(SOURCE)
+                            CHOPPER.run()
+                    case 'TAKE MASK':
+                        if CHOPPER.mask_final is not None and len(SEGMENTS) < 10:
+                            cv.namedWindow('FINALIZE')
+                            global FINISHER
+                            FINISHER = Finisher(CHOPPER.mask_final)
+                            FINISHER.run()
+                    case 'FINALIZE':
+                        cv.destroyWindow('FINALIZE')
+                        SEGMENTS.append(Segment(FINISHER.mask))
                         draw_segments()
-                        global FINISHER
-                        FINISHER = Finisher(CHOPPER.mask_final)
-                        FINISHER.run()
-                        CHOPPER.mask_final = None
-                # elif name == '':
-                #     result = render()
-                #     ... # show (& save).
+
 
 def main(path:str) -> bool:
     for seg in os.listdir(path):
         SEGMENTS.append(Segment(cv.imread(path + seg) // 255), )
     # print(f'read {len(SEGMENTS)} segment masks from file.')
+
     cv.namedWindow('MAIN')
     cv.setMouseCallback('MAIN', handle_mouse)
     global WIN
@@ -172,8 +201,9 @@ def main(path:str) -> bool:
         cv.imshow('MAIN', WIN)
         key = cv.waitKey(1)
         if key == 27:   break
+        elif key == 23:  # ctrl-w
+            write_segments(path, [s.mask * 255 for s in SEGMENTS[1:]])
         elif key == 18: # ctrl-r -> restart
-            
             cv.destroyAllWindows()
             return True
         elif key == 13: # enter
