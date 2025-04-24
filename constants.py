@@ -17,7 +17,7 @@ COLORS = [[  0,   0,   0],
 
 BUTTONS = {
     'MAIN'    : {( 20,  10, 100,  50): ('SEGMENT', COLORS[3]),
-                 ( 20,  80, 100,  50): ('RENDER' , COLORS[4])},
+                 ( 20,  80, 100,  50): ('CHOP OK' , COLORS[4])},
     # 'CHOPPER' : {( 32,  32,  64,  64): ('CHOP IT', COLORS[-2]),
     #              ( 32,  32,  64,  64): ('UNDO'   , COLORS[-2]),
     #              ( 32,  32,  64,  64): ('CLEAR'  , COLORS[-2]),

@@ -146,15 +146,20 @@ class Chopper:
         # ratio = max(ratio, 1 / ratio) # need??? (use resize_rect()?)
         x, y, rad = tuple([round(n * ratio) for n in [x, y, self.draw_rad]])
         cv.circle(self.gc_mask, (x , y), rad, BRUSHES[self.drawing]['mask'], -1)
+        cv.imshow('CHOPPER', self.win)
 
     def undo_draw(self) -> None:
         self.gc_mask = self.mask_pre_draw.copy()
-        x, y = self.view_rect[:2]
-        self.win[y: y + SIDE_CH, x: x + SIDE_CH, :] = self.view_pre_draw
+        self.refresh_view()
+        # x, y, w, h = self.view_rect
+        # self.win[y: y + h, x: x + w, :] = self.view_pre_draw
+        cv.imshow('CHOPPER', self.win)
 
     def handle_mouse(self, event:int, x:int, y:int, flags:int, param):
             if collision(self.view_rect, (x, y)): # mouse in src_view
-                if event == cv.EVENT_LBUTTONDOWN|cv.EVENT_RBUTTONDOWN:
+                # if event == cv.EVENT_LBUTTONDOWN:
+                #     ...
+                if event in [cv.EVENT_LBUTTONDOWN, cv.EVENT_RBUTTONDOWN]:
                     self.mask_pre_draw = self.gc_mask.copy()
                     x, y = self.view_rect[:2]
                     self.view_pre_draw = self.win[y: y + SIDE_CH, x: x + SIDE_CH, :].copy()
@@ -181,8 +186,6 @@ class Chopper:
                                     self.mask_final = Finisher(bitmask).run()
                                     # return self.mask_final
                                     
-
-
     def run(self) -> np.ndarray|None:
         # get ROI: scaled to grabcut rez
         h, w = self.gc_source.shape[:2]
@@ -200,16 +203,14 @@ class Chopper:
         cv.imshow('CHOPPER', self.win)
         cv.namedWindow('PREVIEW')
         self.show_preview()
-        # while self.mask_final == None:
-        #     ...
-        # return self.mask_final
+
 
 
 
 
 class Finisher:
     def __init__(self, mask:np.ndarray):
-        self.mask = mask
+        self.mask = mask # copy?
     def erode(self):
         ...
     def dilate(self):
