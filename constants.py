@@ -18,7 +18,7 @@ COLORS = [[  0,   0,   0],
 BUTTONS = {
     'MAIN'    : {( 20,  10, 100,  50): ('SEGMENT', COLORS[3]),
                  ( 20,  80, 100,  50): ('RENDER' , COLORS[4])},
-    'SEGMENT' : {( 32,  32,  64,  64): ('CHOP IT', COLORS[-2]),
+    'CHOPPER' : {( 32,  32,  64,  64): ('CHOP IT', COLORS[-2]),
                  ( 32,  32,  64,  64): ('UNDO'   , COLORS[-2]),
                  ( 32,  32,  64,  64): ('CLEAR'  , COLORS[-2]),
                  ( 32,  32,  64,  64): ('ACCEPT' , COLORS[-2])},
@@ -29,7 +29,6 @@ BUTTONS = {
     }
 
 SEG_RECT = (0, 180, 140, 60)
-
 SEG_BTNS = {
     'trash' : ((  5, 195, 25, 30), [cv.imread('assets/trash.png')]),
     'render': (( 40, 195, 25, 30), [cv.imread('assets/off.png'), 
@@ -42,19 +41,19 @@ SEG_BTNS = {
     'down'  : ((110, 210, 25, 20), [cv.imread('assets/down.png', cv.IMREAD_GRAYSCALE),
                                     cv.imread('assets/down.png')])
     }
-# Segment.button_states == ordered indeces for btn states:
-#   cycle?   y  y  n  n
-#   btn:  t [r  s  u  d]
-# range:  1 [2  11 2  2]
-#   def:  0 [0, 9, 0, 0]
 
 SEG_MAP = {0: {name: rect for name, (rect, _) in SEG_BTNS.items()}}
 for i in range(1, 9):
     SEG_MAP[i] = {} 
     for name, (x, y, w, h) in SEG_MAP[0].items():
         SEG_MAP[i][name] = (x, y + SEG_H * i, w, h)
-        
-###################################################################################################
+
+# Segment.button_states == ordered indeces for btn states:
+#   cycle?   y  y  n  n
+#   btn:  t [r  s  u  d]
+# range:  1 [2  11 2  2]
+#   def:  0 [0, 9, 0, 0]
+
 ###################################################################################################
 
 # IMAGES = {'on': cv.imread('assets/on.png'),  # all 25 x 30 except up/down
