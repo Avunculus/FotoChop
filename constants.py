@@ -30,6 +30,12 @@ BUTTONS = {
     #              ( 32,  32,  64,  64): ('FINISH' , COLORS[-2])}
     }
 
+ALPHA = np.ones((30, 25, 3)) * 255
+for i in range(0, 30, 4):
+    ALPHA[i: i + 1, :, :] *= 0
+for i in range(0, 25, 4):
+    ALPHA[:, i: i + 1, :] *= 0
+
 SEG_RECT = (0, 120, 140, 60)
 SEG_BTNS = {
     'trash' : ((  5, 135, 25, 30), [cv.imread('assets/trash.png')]),
@@ -37,7 +43,8 @@ SEG_BTNS = {
                                     cv.imread('assets/on.png')]),
     'source': (( 75, 135, 25, 30), [np.ones((30, 25, 3)) * c for c in COLORS] +\
                                    [cv.imread('assets/image.png'),
-                                    cv.imread('assets/image.png', cv.IMREAD_GRAYSCALE)]),
+                                    cv.imread('assets/image.png', cv.IMREAD_GRAYSCALE)] +\
+                                         [ALPHA]),
     'up'    : ((110, 130, 25, 20), [cv.imread('assets/up.png', cv.IMREAD_GRAYSCALE),
                                     cv.imread('assets/up.png')]),
     'down'  : ((110, 150, 25, 20), [cv.imread('assets/down.png', cv.IMREAD_GRAYSCALE),
