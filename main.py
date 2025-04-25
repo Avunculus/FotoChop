@@ -3,9 +3,11 @@ from chop import *
 from system import ImagePicker, save_render, write_segments
 
 def pick_source() -> str: #-> tuple[np.ndarray, str]:
-    # fn = ImagePicker().run()
-    fn = 'ubb2.jpg'
-    ###
+    fn = ImagePicker().run()
+    cv.destroyWindow('PICK IMAGE')
+    if fn == '':
+        print('Failed to pick filename')
+        return ''
     name = 'sources/' + fn
     image = cv.imread(name)
     match image.shape[2]:   # set color format to 3-CHANNEL
@@ -37,9 +39,10 @@ def get_window() -> np.ndarray:
     win = draw_buttons(win, 'MAIN')
     for seg in SEGMENTS: seg.draw(win)
     return win
-    
+
 def render() -> np.ndarray:
-    result = np.concatenate(SOURCE, np.zeros(SOURCE.shape[:2], 2)) * 0  # convert to 4-channel  ## copy source?
+    # ???
+    result = np.concatenate(SOURCE, np.zeros(SOURCE.shape[:2]), 2) * 0  # convert to 4-channel  ## copy source?
     for seg in SEGMENTS:
         if seg.render:
             mask = cv.resize(seg.mask, (result.shape[1], result.shape[0]))
@@ -194,7 +197,9 @@ def handle_mouse(event:int, x:int, y:int, flags:int, param):
 
 
 def main(path:str) -> bool:
-    for seg in [n for n in os.listdir(path) if ',' in n]:
+    if not os.path.isdir(path):
+        os.mkdir(path)
+    for seg in [n for n in os.listdir(path) if '.' in n]:
         SEGMENTS.append(Segment(cv.imread(path + seg) // 255), )
     # print(f'read {len(SEGMENTS)} segment masks from file.')
 
