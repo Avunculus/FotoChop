@@ -41,20 +41,21 @@ def get_window() -> np.ndarray:
     return win
 
 def render() -> np.ndarray:
-    # ???
-    result = np.concatenate(SOURCE, np.zeros(SOURCE.shape[:2]), 2) * 0  # convert to 4-channel  ## copy source?
+    result = cv.cvtColor(SOURCE, cv.COLOR_BGR2BGRA) * 0
+    
     for seg in SEGMENTS:
         if seg.render:
             mask = cv.resize(seg.mask, (result.shape[1], result.shape[0]))
             if seg.source < 9: # solid color
                 src = np.ones_like(result) * COLORS[seg.source]
+                src[..., 3] = 255
             else: 
-                match seg.source:
-                    case 9: src = np.concatenate(SOURCE, np.ones(SOURCE.shape[:2] * 255), axis=2) # copy source?
+                match seg.source: # 0-8 = colors; 9, 10, 11 = img, imggray, alpha0
+                    case 9: src = cv.cvtColor(SOURCE, cv.COLOR_BGR2BGRA)
                     case 10:
                         src = cv.cvtColor(SOURCE, cv.COLOR_BGR2GRAY)
                         src = np.stack([src, src, src, np.ones(src.shape[:2]) * 255], axis=2)
-                    case 11: src = result.copy()
+                    case 11: src = np.zeros_like(result)
             result[np.nonzero(mask)] = src[np.nonzero(mask)]
     return result
 
@@ -189,11 +190,12 @@ def handle_mouse(event:int, x:int, y:int, flags:int, param):
                             cv.namedWindow('FINALIZE')
                             global FINISHER
                             FINISHER = Finisher(CHOPPER.mask_final)
-                            FINISHER.run()
-                    case 'FINALIZE':
-                        cv.destroyWindow('FINALIZE')
-                        SEGMENTS.append(Segment(FINISHER.mask))
-                        draw_segments()
+                            # FINISHER.run()
+                    # case 'FINALIZE':
+                    #     if FINISHER.mask_final is not None:
+                    #         cv.destroyWindow('FINALIZE')
+                    #         SEGMENTS.append(Segment(FINISHER.mask_final))
+                    #         draw_segments()
 
 
 def main(path:str) -> bool:
@@ -202,7 +204,8 @@ def main(path:str) -> bool:
     for seg in [n for n in os.listdir(path) if '.' in n]:
         SEGMENTS.append(Segment(cv.imread(path + seg) // 255), )
     # print(f'read {len(SEGMENTS)} segment masks from file.')
-
+    global FINISHER
+    FINISHER = None
     cv.namedWindow('MAIN')
     cv.setMouseCallback('MAIN', handle_mouse)
     global WIN
@@ -217,10 +220,16 @@ def main(path:str) -> bool:
         elif key == 18: # ctrl-r -> restart
             cv.destroyAllWindows()
             return True
+        elif key == ord('e') and FINISHER is not None: FINISHER.morph('e')
+        elif key == ord('d') and FINISHER is not None: FINISHER.morph('d')
+        elif key == 32 and FINISHER is not None:
+            cv.destroyWindow('FINALIZE')
+            SEGMENTS.append(Segment(FINISHER.mask // 255))
+            draw_segments()
         elif key == 13: # enter
             result = render()
             name = save_render(result, path)
-            cv.namedWindow(f'RENDER: {name}', flags=cv.WINDOW_NORMAL) # WINDOW_KEEPRATIO # ?
+            cv.namedWindow(f'RENDER: {name}', flags=cv.WINDOW_KEEPRATIO) # WINDOW_KEEPRATIO # ?
             cv.imshow(f'RENDER: {name}', result)
             ... # show
         elif key > 0:   print(f'{key=}')

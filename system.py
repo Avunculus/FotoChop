@@ -57,10 +57,12 @@ class ImagePicker:
 def save_render(image:np.ndarray, path:str) -> str:
     if not 'renders' in os.listdir(path):
         os.mkdir(path + 'renders')
-    reserved = [n.split('.') for n in os.listdir(path + 'renders/')]
-    for i in range(1000):
-        if repr(i) not in reserved:
-            name = path + 'renders/' + repr(i) + '.png'
+    # reserved = [n.split('.') for n in os.listdir(path + 'renders/')]
+    i = 0
+    name = path + f'renders/{repr(i)}.png'
+    while name in os.listdir(path + 'renders/'):
+        i += 1
+        name = path + 'renders/' + repr(i) + '.png'
     cv.imwrite(name, image) # params=[cv2.IMWRITE_PNG_COMPRESSION, 0] # Set PNG compression level to 0 (no compression) thru 9 (max compress)
     return name
 

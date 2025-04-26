@@ -18,8 +18,8 @@ COLORS = [[  0,   0,   0],
 
 BUTTONS = {
     'MAIN'    : {(  8,   8, 100,  30): ('SEGMENT'  , COLORS[3]),
-                 (  8,  46, 100,  30): ('TAKE MASK', COLORS[4]),
-                 (  8,  84, 100,  30): ('FINALIZE' , COLORS[5])},
+                 (  8,  46, 100,  30): ('TAKE MASK', COLORS[4])}
+                #  (  8,  84, 100,  30): ('FINALIZE' , COLORS[5])},
     # 'CHOPPER' : {( 32,  32,  64,  64): ('CHOP IT', COLORS[-2]),
     #              ( 32,  32,  64,  64): ('UNDO'   , COLORS[-2]),
     #              ( 32,  32,  64,  64): ('CLEAR'  , COLORS[-2]),
@@ -60,7 +60,7 @@ for i in range(1, 10):
 # Segment.button_states == ordered indeces for btn states:
 #   cycle?   y  y  n  n
 #   btn:  t [r  s  u  d]
-# range:  1 [2  11 2  2]
+# range:  1 [2  12 2  2]
 #   def:  0 [0, 9, 0, 0]
 
 ###################################################################################################

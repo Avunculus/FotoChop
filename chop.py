@@ -192,20 +192,42 @@ K_SHAPE = [cv.MORPH_ERODE,
 
 class Finisher:
     def __init__(self, mask:np.ndarray):
-        self.mask = mask
-        self.view = mask * 255
-        cv.namedWindow('PARAMS', flags=cv.WINDOW_GUI_EXPANDED)
-        cv.createTrackbar('K SIZE', 'PARAMS', 0, 12, self.morph)
-        cv.createTrackbar('K SHAPE', 'PARAMS', 0, 3, self.morph)
+        self.mask_original = mask
+        self.mask = mask * 255
+        self.mask_before = self.mask.copy()
+        cv.namedWindow('FINALIZE', flags=cv.WINDOW_GUI_EXPANDED)
+        cv.imshow('FINALIZE', self.mask)
+        cv.createTrackbar('K SIZE', 'FINALIZE', 1, 12, self.trackbar_changed)
+        cv.createTrackbar('K SHAPE', 'FINALIZE', 0, 3, self.trackbar_changed)
         
-    def morph(self, arg):
-        ix = cv.getTrackbarPos('K SHAPE', 'PARAMS')
-        print(f'{arg==ix=}')
-        print(f'kernel size = {cv.getTrackbarPos('K SIZE', 'PARAMS')} || kernel shape = {K_SHAPE[ix]}')
-    def erode(self):
-        ...
-    def dilate(self):
-        ...
-    def run(self) -> np.ndarray:
-        cv.imshow('FINALIZE', self.view)
-        cv.imshow('PARAMS', self.view)
+    def trackbar_changed(self, arg):
+        ix = cv.getTrackbarPos('K SHAPE', 'FINALIZE')
+        print(f'{arg=} | {ix=}')
+        print(f'kernel size = {cv.getTrackbarPos('K SIZE', 'FINALIZE')} || kernel shape = {K_SHAPE[ix]}')
+
+    def revert(self):
+        self.mask = self.mask_original * 255   
+        cv.imshow('FINALIZE', self.mask) 
+    def morph(self, operation:str):
+        size = cv.getTrackbarPos('K SIZE', 'FINALIZE')
+        shape = K_SHAPE[cv.getTrackbarPos('K SHAPE', 'FINALIZE')]
+        element = cv.getStructuringElement(shape, (2 * size + 1, 2 * size + 1), (size, size))
+        self.mask_before = self.mask.copy()
+        if operation == 'e':
+            self.mask = cv.erode(self.mask, element)
+        elif operation == 'd':
+            self.mask = cv.dilate(self.mask, element)
+        cv.imshow('FINALIZE', self.mask)
+        
+    # def run(self) -> np.ndarray:
+    #     while True:
+    #         cv.imshow('FINALIZE', self.mask)
+    #         key = cv.waitKey(1)
+    #         if   key == ord('e'): self.morph('e')
+    #         elif key == ord('d'): self.morph('d')
+    #         elif key == 32: # spc
+    #             self.mask_final = self.mask
+    #             break 
+            # ctrl-z (30?) -> self.undo_op(): self.mask = self.mask_before
+
+        
